@@ -1,6 +1,5 @@
 import { Person } from "@/models/Person";
 
-// utils/localStorageDB.ts
 export class LocalStorageDB {
 
   #lastId: string = '0';
