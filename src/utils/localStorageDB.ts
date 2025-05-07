@@ -2,37 +2,29 @@ import { Person } from "@/models/Person";
 
 // utils/localStorageDB.ts
 export class LocalStorageDB {
-  constructor(private dbName: string) {}
 
-  set(key: string, value: Person): void {
-    const db = this.getDB();
-    db[key] = value;
-    localStorage.setItem(this.dbName, JSON.stringify(db));
+  #lastId: string = '0';
+
+  constructor() {
+    if(localStorage.length !== 0)
+      this.#lastId = localStorage.length + ''; 
+  }
+
+  set(value: Person): string {
+    this.#lastId = +this.#lastId + 1 + '';
+    localStorage.setItem(this.#lastId, JSON.stringify(value));
+    return this.#lastId;
   }
 
   get(key: string): Person | null {
-    const db = this.getDB();
-    return db[key] || null;
+    return JSON.parse(localStorage.getItem(key) ?? 'null') as Person;
   }
 
   remove(key: string): void {
-    const db = this.getDB();
-    delete db[key];
-    localStorage.setItem(this.dbName, JSON.stringify(db));
+    localStorage.removeItem(key);
   }
 
   clear(): void {
-    localStorage.removeItem(this.dbName);
-  }
-
-  lastId(): number {
-    const db = this.getDB();
-    const ids = Object.keys(db).map((key) => parseInt(key, 10));
-    return ids.length > 0 ? Math.max(...ids) : 0;
-  }
-
-  private getDB(): Record<string, Person> {
-    const db = localStorage.getItem(this.dbName);
-    return db ? JSON.parse(db) : {};
+    localStorage.clear();
   }
 }
