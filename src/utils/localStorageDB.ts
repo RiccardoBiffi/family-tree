@@ -4,18 +4,18 @@ import { Person } from "@/models/Person";
 export class LocalStorageDB {
   constructor(private dbName: string) {}
 
-  setItem(key: string, value: Person): void {
+  set(key: string, value: Person): void {
     const db = this.getDB();
     db[key] = value;
     localStorage.setItem(this.dbName, JSON.stringify(db));
   }
 
-  getItem(key: string): Person | null {
+  get(key: string): Person | null {
     const db = this.getDB();
     return db[key] || null;
   }
 
-  removeItem(key: string): void {
+  remove(key: string): void {
     const db = this.getDB();
     delete db[key];
     localStorage.setItem(this.dbName, JSON.stringify(db));
