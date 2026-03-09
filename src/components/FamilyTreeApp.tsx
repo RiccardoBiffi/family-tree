@@ -4,18 +4,29 @@ import { useDeferredValue, useEffect, useMemo, useState } from "react";
 
 import { AdminPanel } from "@/components/AdminPanel";
 import { PeopleTable } from "@/components/PeopleTable";
+import { PersonEditorModal } from "@/components/PersonEditorModal";
 import { PersonModal } from "@/components/PersonModal";
 import { TimelineView } from "@/components/TimelineView";
 import { TreeDiagramView } from "@/components/TreeDiagramView";
 import { useFamilyTreeStore } from "@/hooks/useFamilyTreeStore";
 import type { PersonRecord } from "@/models/Person";
 import {
+  createEmptyPersonDraft,
   createPersonId,
   validateFamilyTree,
 } from "@/utils/familyTree";
 
 type AppMode = "visitor" | "admin";
 type AppView = "diagram" | "table" | "timeline";
+type EditorState =
+  | {
+      mode: "create";
+      draft: PersonRecord;
+    }
+  | {
+      mode: "edit";
+      personId: string;
+    };
 
 const viewLabels: Record<AppView, { title: string; subtitle: string }> = {
   diagram: {
@@ -39,7 +50,7 @@ export function FamilyTreeApp() {
   const [view, setView] = useState<AppView>("diagram");
   const [query, setQuery] = useState("");
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
-  const [editingPersonId, setEditingPersonId] = useState<string | null>(null);
+  const [editorState, setEditorState] = useState<EditorState | null>(null);
   const deferredQuery = useDeferredValue(query);
   const people = snapshot?.people ?? emptyPeople;
   const peopleById = useMemo(
@@ -50,10 +61,26 @@ export function FamilyTreeApp() {
     () => (selectedPersonId && snapshot ? peopleById.get(selectedPersonId) ?? null : null),
     [peopleById, selectedPersonId, snapshot],
   );
-  const editingPerson = useMemo(
-    () => (editingPersonId && snapshot ? peopleById.get(editingPersonId) ?? null : null),
-    [editingPersonId, peopleById, snapshot],
-  );
+  const editorPerson = useMemo(() => {
+    if (!editorState) {
+      return null;
+    }
+
+    if (editorState.mode === "create") {
+      return editorState.draft;
+    }
+
+    return snapshot ? peopleById.get(editorState.personId) ?? null : null;
+  }, [editorState, peopleById, snapshot]);
+  const activeAdminPersonId = useMemo(() => {
+    if (editorState?.mode === "edit") {
+      return editorState.personId;
+    }
+
+    return selectedPersonId;
+  }, [editorState, selectedPersonId]);
+  const isEditorOpen = mode === "admin" && editorState !== null && editorPerson !== null;
+  const isPersonModalOpen = selectedPerson !== null && !isEditorOpen;
   const warnings = useMemo(() => (snapshot ? validateFamilyTree(snapshot) : []), [snapshot]);
   const totalFamilies = useMemo(
     () =>
@@ -74,10 +101,19 @@ export function FamilyTreeApp() {
       setSelectedPersonId(null);
     }
 
-    if (editingPersonId && !snapshot.people.some((person) => person.id === editingPersonId)) {
-      setEditingPersonId(null);
+    if (
+      editorState?.mode === "edit" &&
+      !snapshot.people.some((person) => person.id === editorState.personId)
+    ) {
+      setEditorState(null);
     }
-  }, [editingPersonId, selectedPersonId, snapshot]);
+  }, [editorState, selectedPersonId, snapshot]);
+
+  useEffect(() => {
+    if (mode !== "admin" && editorState) {
+      setEditorState(null);
+    }
+  }, [editorState, mode]);
 
   if (!isLoaded || !snapshot) {
     return (
@@ -93,17 +129,26 @@ export function FamilyTreeApp() {
   }
 
   const handleSelectPerson = (personId: string) => {
+    setEditorState(null);
     setSelectedPersonId(personId);
   };
 
   const handleCreatePerson = () => {
-    setEditingPersonId(null);
+    setMode("admin");
+    setSelectedPersonId(null);
+    setEditorState({
+      mode: "create",
+      draft: createEmptyPersonDraft(),
+    });
   };
 
   const handleEditPerson = (personId: string) => {
     setMode("admin");
-    setEditingPersonId(personId);
-    setSelectedPersonId(personId);
+    setSelectedPersonId(null);
+    setEditorState({
+      mode: "edit",
+      personId,
+    });
   };
 
   const handleSavePerson = (draft: PersonRecord) => {
@@ -115,7 +160,7 @@ export function FamilyTreeApp() {
 
     if (savedSnapshot) {
       setSelectedPersonId(nextPerson.id);
-      setEditingPersonId(nextPerson.id);
+      setEditorState(null);
     }
   };
 
@@ -123,7 +168,7 @@ export function FamilyTreeApp() {
     const savedSnapshot = deletePerson(personId);
     if (savedSnapshot) {
       setSelectedPersonId(null);
-      setEditingPersonId(null);
+      setEditorState(null);
     }
   };
 
@@ -131,7 +176,7 @@ export function FamilyTreeApp() {
     resetDemoData();
     setQuery("");
     setSelectedPersonId(null);
-    setEditingPersonId(null);
+    setEditorState(null);
   };
 
   return (
@@ -274,26 +319,33 @@ export function FamilyTreeApp() {
           {mode === "admin" ? (
             <AdminPanel
               onCreatePerson={handleCreatePerson}
-              onDeletePerson={handleDeletePerson}
               onResetDemoData={handleResetDemo}
-              onSavePerson={handleSavePerson}
-              onSelectPerson={(personId) => {
-                setEditingPersonId(personId);
-                setSelectedPersonId(personId);
-              }}
+              onOpenPerson={handleSelectPerson}
               people={snapshot.people}
-              selectedPerson={editingPerson}
+              selectedPersonId={activeAdminPersonId}
             />
           ) : null}
         </div>
       </div>
 
-      <PersonModal
-        onClose={() => setSelectedPersonId(null)}
-        onEdit={mode === "admin" && selectedPerson ? handleEditPerson : undefined}
-        peopleById={peopleById}
-        person={selectedPerson}
-      />
+      {isPersonModalOpen ? (
+        <PersonModal
+          onClose={() => setSelectedPersonId(null)}
+          onEdit={mode === "admin" && selectedPerson ? handleEditPerson : undefined}
+          peopleById={peopleById}
+          person={selectedPerson}
+        />
+      ) : null}
+      {isEditorOpen ? (
+        <PersonEditorModal
+          mode={editorState.mode}
+          onClose={() => setEditorState(null)}
+          onDelete={editorState.mode === "edit" ? handleDeletePerson : undefined}
+          onSave={handleSavePerson}
+          people={snapshot.people}
+          person={editorPerson}
+        />
+      ) : null}
     </main>
   );
 }
