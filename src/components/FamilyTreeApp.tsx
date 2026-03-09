@@ -1,8 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 
-import { AdminPanel } from "@/components/AdminPanel";
+import { ArchiveActions } from "@/components/ArchiveActions";
 import { PeopleTable } from "@/components/PeopleTable";
 import { PersonEditorModal } from "@/components/PersonEditorModal";
 import { PersonModal } from "@/components/PersonModal";
@@ -10,11 +11,7 @@ import { TimelineView } from "@/components/TimelineView";
 import { TreeDiagramView } from "@/components/TreeDiagramView";
 import { useFamilyTreeStore } from "@/hooks/useFamilyTreeStore";
 import type { PersonRecord } from "@/models/Person";
-import {
-  createEmptyPersonDraft,
-  createPersonId,
-  validateFamilyTree,
-} from "@/utils/familyTree";
+import { createEmptyPersonDraft, createPersonId, validateFamilyTree } from "@/utils/familyTree";
 
 type AppMode = "visitor" | "admin";
 type AppView = "diagram" | "table" | "timeline";
@@ -28,6 +25,10 @@ type EditorState =
       personId: string;
     };
 
+interface FamilyTreeAppProps {
+  mode: AppMode;
+}
+
 const viewLabels: Record<AppView, { title: string; subtitle: string }> = {
   diagram: {
     title: "Diagramma",
@@ -39,19 +40,36 @@ const viewLabels: Record<AppView, { title: string; subtitle: string }> = {
   },
   timeline: {
     title: "Timeline",
-    subtitle: "La stessa famiglia disposta lungo una linea temporale interattiva.",
+    subtitle: "Scorrimento orizzontale dalla nascita piu' antica fino a oggi.",
   },
 };
 const emptyPeople: PersonRecord[] = [];
 
-export function FamilyTreeApp() {
+function getAccessCopy(mode: AppMode) {
+  if (mode === "admin") {
+    return {
+      eyebrow: "Area amministrazione locale",
+      title: "Modifica attiva su /admin",
+      body: "Qui puoi creare nuove schede, modificare quelle esistenti e ripristinare i dati demo. Nessuna informazione viene inviata al server.",
+    };
+  }
+
+  return {
+    eyebrow: "Consultazione",
+    title: "Archivio pubblico in sola lettura",
+    body: "Questa pagina serve a consultare l'albero genealogico. Per intervenire sui dati devi usare il percorso /admin nello stesso browser.",
+  };
+}
+
+export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
   const { snapshot, isLoaded, upsertPerson, deletePerson, resetDemoData } = useFamilyTreeStore();
-  const [mode, setMode] = useState<AppMode>("visitor");
   const [view, setView] = useState<AppView>("diagram");
   const [query, setQuery] = useState("");
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   const [editorState, setEditorState] = useState<EditorState | null>(null);
   const deferredQuery = useDeferredValue(query);
+  const isAdmin = mode === "admin";
+  const accessCopy = getAccessCopy(mode);
   const people = snapshot?.people ?? emptyPeople;
   const peopleById = useMemo(
     () => new Map(people.map((person) => [person.id, person])),
@@ -72,15 +90,6 @@ export function FamilyTreeApp() {
 
     return snapshot ? peopleById.get(editorState.personId) ?? null : null;
   }, [editorState, peopleById, snapshot]);
-  const activeAdminPersonId = useMemo(() => {
-    if (editorState?.mode === "edit") {
-      return editorState.personId;
-    }
-
-    return selectedPersonId;
-  }, [editorState, selectedPersonId]);
-  const isEditorOpen = mode === "admin" && editorState !== null && editorPerson !== null;
-  const isPersonModalOpen = selectedPerson !== null && !isEditorOpen;
   const warnings = useMemo(() => (snapshot ? validateFamilyTree(snapshot) : []), [snapshot]);
   const totalFamilies = useMemo(
     () =>
@@ -91,6 +100,8 @@ export function FamilyTreeApp() {
       ).size,
     [people],
   );
+  const isEditorOpen = isAdmin && editorState !== null && editorPerson !== null;
+  const isPersonModalOpen = selectedPerson !== null && !isEditorOpen;
 
   useEffect(() => {
     if (!snapshot) {
@@ -110,10 +121,10 @@ export function FamilyTreeApp() {
   }, [editorState, selectedPersonId, snapshot]);
 
   useEffect(() => {
-    if (mode !== "admin" && editorState) {
+    if (!isAdmin && editorState) {
       setEditorState(null);
     }
-  }, [editorState, mode]);
+  }, [editorState, isAdmin]);
 
   if (!isLoaded || !snapshot) {
     return (
@@ -134,7 +145,10 @@ export function FamilyTreeApp() {
   };
 
   const handleCreatePerson = () => {
-    setMode("admin");
+    if (!isAdmin) {
+      return;
+    }
+
     setSelectedPersonId(null);
     setEditorState({
       mode: "create",
@@ -143,7 +157,10 @@ export function FamilyTreeApp() {
   };
 
   const handleEditPerson = (personId: string) => {
-    setMode("admin");
+    if (!isAdmin) {
+      return;
+    }
+
     setSelectedPersonId(null);
     setEditorState({
       mode: "edit",
@@ -202,48 +219,29 @@ export function FamilyTreeApp() {
                   {totalFamilies} relazioni di coppia
                 </span>
                 <span className="rounded-full bg-white/90 px-4 py-2 text-sm font-medium text-slate-700">
-                  Ultimo aggiornamento {new Date(snapshot.metadata.updatedAt).toLocaleDateString("it-IT")}
+                  Ultimo aggiornamento{" "}
+                  {new Date(snapshot.metadata.updatedAt).toLocaleDateString("it-IT")}
                 </span>
               </div>
             </div>
 
             <div className="rounded-[30px] border border-white/60 bg-white/75 p-5 backdrop-blur">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-[#5f6d63]">Ruolo</p>
-                  <h2 className="mt-2 text-xl font-semibold text-slate-900">Accesso locale</h2>
-                </div>
-                <div className="rounded-full bg-[#f4ecd9] p-1">
-                  {(["visitor", "admin"] as AppMode[]).map((currentMode) => (
-                    <button
-                      className={[
-                        "rounded-full px-4 py-2 text-sm font-medium transition",
-                        mode === currentMode
-                          ? "bg-[#153524] text-white"
-                          : "text-slate-600 hover:text-[#153524]",
-                      ].join(" ")}
-                      key={currentMode}
-                      onClick={() => setMode(currentMode)}
-                      type="button"
-                    >
-                      {currentMode === "visitor" ? "Visitatore" : "Amministratore"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <p className="mt-4 text-sm leading-6 text-slate-600">
-                La modalita&apos; visitatore consente solo la consultazione. La modalita&apos; amministratore abilita l&apos;editor e resta disponibile solo nel browser corrente.
+              <p className="text-xs uppercase tracking-[0.24em] text-[#5f6d63]">
+                {accessCopy.eyebrow}
               </p>
-
-              <label className="mt-5 block space-y-2">
-                <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Ricerca trasversale</span>
-                <input
-                  className="w-full rounded-2xl border border-[#d9cfbd] bg-[#fffaf1] px-4 py-3 text-sm outline-none transition focus:border-[#5f8f63] focus:ring-4 focus:ring-[#5f8f63]/10"
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Cerca per nome, tag, luogo o professione"
-                  value={query}
-                />
-              </label>
+              <h2 className="mt-2 text-xl font-semibold text-slate-900">{accessCopy.title}</h2>
+              <p className="mt-4 text-sm leading-6 text-slate-600">{accessCopy.body}</p>
+              <div className="mt-5 flex flex-wrap gap-2">
+                <span className="rounded-full bg-[#f4ecd9] px-4 py-2 text-xs uppercase tracking-[0.18em] text-[#153524]">
+                  {isAdmin ? "Modifica locale attiva" : "Sola lettura"}
+                </span>
+                <Link
+                  className="rounded-full border border-[#d9cfbd] bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-[#5f8f63] hover:text-[#153524]"
+                  href={isAdmin ? "/" : "/admin"}
+                >
+                  {isAdmin ? "Apri la vista visitatore" : "Vai a /admin"}
+                </Link>
+              </div>
             </div>
           </div>
         </section>
@@ -263,6 +261,14 @@ export function FamilyTreeApp() {
             </div>
           </section>
         ) : null}
+
+        <ArchiveActions
+          mode={mode}
+          onCreatePerson={handleCreatePerson}
+          onQueryChange={setQuery}
+          onResetDemoData={handleResetDemo}
+          query={query}
+        />
 
         <section className="rounded-[28px] border border-[#d9cfbd] bg-[#f8f1e4] px-5 py-5 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -295,43 +301,29 @@ export function FamilyTreeApp() {
           </div>
         </section>
 
-        <div className={mode === "admin" ? "grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]" : "space-y-6"}>
-          <div className="space-y-6">
-            {view === "diagram" ? (
-              <TreeDiagramView
-                onSelectPerson={handleSelectPerson}
-                people={snapshot.people}
-                query={deferredQuery}
-              />
-            ) : null}
-            {view === "table" ? (
-              <PeopleTable onSelectPerson={handleSelectPerson} people={snapshot.people} query={query} />
-            ) : null}
-            {view === "timeline" ? (
-              <TimelineView
-                onSelectPerson={handleSelectPerson}
-                people={snapshot.people}
-                query={deferredQuery}
-              />
-            ) : null}
-          </div>
-
-          {mode === "admin" ? (
-            <AdminPanel
-              onCreatePerson={handleCreatePerson}
-              onResetDemoData={handleResetDemo}
-              onOpenPerson={handleSelectPerson}
-              people={snapshot.people}
-              selectedPersonId={activeAdminPersonId}
-            />
-          ) : null}
-        </div>
+        {view === "diagram" ? (
+          <TreeDiagramView
+            onSelectPerson={handleSelectPerson}
+            people={snapshot.people}
+            query={deferredQuery}
+          />
+        ) : null}
+        {view === "table" ? (
+          <PeopleTable onSelectPerson={handleSelectPerson} people={snapshot.people} query={query} />
+        ) : null}
+        {view === "timeline" ? (
+          <TimelineView
+            onSelectPerson={handleSelectPerson}
+            people={snapshot.people}
+            query={deferredQuery}
+          />
+        ) : null}
       </div>
 
       {isPersonModalOpen ? (
         <PersonModal
           onClose={() => setSelectedPersonId(null)}
-          onEdit={mode === "admin" && selectedPerson ? handleEditPerson : undefined}
+          onEdit={isAdmin && selectedPerson ? handleEditPerson : undefined}
           peopleById={peopleById}
           person={selectedPerson}
         />

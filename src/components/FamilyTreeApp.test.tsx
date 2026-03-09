@@ -49,31 +49,33 @@ import { FAMILY_TREE_STORAGE_KEY } from "@/models/FamilyTree";
 describe("FamilyTreeApp", () => {
   it("renders the seeded archive, opens person details, and switches views", async () => {
     const user = userEvent.setup();
+    const currentYear = new Date().getUTCFullYear();
 
-    render(<FamilyTreeApp />);
+    render(<FamilyTreeApp mode="visitor" />);
 
     expect(await screen.findByText("Archivio della famiglia Rinaldi")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Nanni/i }));
-    expect(await screen.findByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByText(/Scheda persona/i)).toBeInTheDocument();
+    const personDialog = await screen.findByRole("dialog");
+    expect(personDialog).toBeInTheDocument();
+    expect(within(personDialog).getByText(/Scheda persona/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Chiudi" }));
 
     await user.click(screen.getByRole("button", { name: /^Tabella/i }));
     expect(await screen.findByText(/Elenco ordinabile e filtrabile/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /^Timeline/i }));
-    expect(await screen.findByText(/Cronologia con panning e zoom/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Cronologia di nascite e decessi/i)).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(`Intervallo 1943 - ${currentYear}`))).toBeInTheDocument();
   });
 
   it("allows admin mode to add a person and reveal hidden table columns", async () => {
     const user = userEvent.setup();
 
-    render(<FamilyTreeApp />);
+    render(<FamilyTreeApp mode="admin" />);
 
     expect(await screen.findByText("Archivio della famiglia Rinaldi")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Amministratore" }));
     await user.click(screen.getByRole("button", { name: "Nuova persona" }));
 
     await user.type(screen.getByLabelText("Nome"), "Giulia");
@@ -118,17 +120,11 @@ describe("FamilyTreeApp", () => {
   it("opens the editor from the person card with the current values pre-filled", async () => {
     const user = userEvent.setup();
 
-    render(<FamilyTreeApp />);
+    render(<FamilyTreeApp mode="admin" />);
 
     expect(await screen.findByText("Archivio della famiglia Rinaldi")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Amministratore" }));
-    const adminPanel = screen.getByText(/Apri una scheda/i).closest("section");
-
-    expect(adminPanel).not.toBeNull();
-    await user.click(
-      within(adminPanel as HTMLElement).getByRole("button", { name: /Nanni/i }),
-    );
+    await user.click(screen.getByRole("button", { name: /Nanni/i }));
 
     const personDialog = await screen.findByRole("dialog");
     expect(within(personDialog).getByText(/Scheda persona/i)).toBeInTheDocument();
