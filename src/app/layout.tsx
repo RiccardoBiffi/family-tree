@@ -1,20 +1,10 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import "@xyflow/react/dist/style.css";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
-  title: "Family Tree",
-  description: "Record and visualize your family history",
+  title: "Family Tree Archive",
+  description: "Web app Next.js per gestire e visualizzare un albero genealogico interamente nel browser.",
 };
 
 export default function RootLayout({
@@ -23,12 +13,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
-      </body>
+    <html lang="it">
+      <body>{children}</body>
     </html>
   );
 }

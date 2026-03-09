@@ -1,29 +1,72 @@
-import { Person } from "@/models/Person";
+import { seedFamilyTree } from "@/data/seedFamilyTree";
+import {
+  FAMILY_TREE_STORAGE_KEY,
+  type FamilyTreeSnapshot,
+} from "@/models/FamilyTree";
+import { normalizeFamilyTree } from "@/utils/familyTree";
 
 export class LocalStorageDB {
+  readonly storageKey: string;
 
-  #lastId: string = '0';
-
-  constructor() {
-    if(localStorage.length !== 0)
-      this.#lastId = localStorage.length + ''; 
+  constructor(storageKey = FAMILY_TREE_STORAGE_KEY) {
+    this.storageKey = storageKey;
   }
 
-  set(value: Person): string {
-    this.#lastId = +this.#lastId + 1 + '';
-    localStorage.setItem(this.#lastId, JSON.stringify(value));
-    return this.#lastId;
+  isAvailable(): boolean {
+    return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
   }
 
-  get(key: string): Person | null {
-    return JSON.parse(localStorage.getItem(key) ?? 'null') as Person;
+  load(): FamilyTreeSnapshot {
+    if (!this.isAvailable()) {
+      return normalizeFamilyTree(seedFamilyTree);
+    }
+
+    const storedValue = window.localStorage.getItem(this.storageKey);
+
+    if (!storedValue) {
+      const seeded = normalizeFamilyTree(seedFamilyTree);
+      this.save(seeded);
+      return seeded;
+    }
+
+    try {
+      return normalizeFamilyTree(JSON.parse(storedValue) as FamilyTreeSnapshot);
+    } catch {
+      const seeded = normalizeFamilyTree(seedFamilyTree);
+      this.save(seeded);
+      return seeded;
+    }
   }
 
-  remove(key: string): void {
-    localStorage.removeItem(key);
+  save(snapshot: FamilyTreeSnapshot): FamilyTreeSnapshot {
+    const normalized = normalizeFamilyTree({
+      ...snapshot,
+      metadata: {
+        ...snapshot.metadata,
+        updatedAt: new Date().toISOString(),
+      },
+    });
+
+    if (this.isAvailable()) {
+      window.localStorage.setItem(this.storageKey, JSON.stringify(normalized));
+    }
+
+    return normalized;
+  }
+
+  replace(snapshot: FamilyTreeSnapshot): FamilyTreeSnapshot {
+    return this.save(snapshot);
+  }
+
+  reset(): FamilyTreeSnapshot {
+    return this.save(seedFamilyTree);
   }
 
   clear(): void {
-    localStorage.clear();
+    if (!this.isAvailable()) {
+      return;
+    }
+
+    window.localStorage.removeItem(this.storageKey);
   }
 }
