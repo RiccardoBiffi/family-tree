@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import {
   flexRender,
   getCoreRowModel,
@@ -41,100 +41,111 @@ export function PeopleTable({ people, query, onSelectPerson }: PeopleTableProps)
     birthPlace: false,
   });
   const deferredQuery = useDeferredValue(query);
-  const peopleById = new Map(people.map((person) => [person.id, person]));
-  const filteredPeople = people.filter((person) => matchesPersonQuery(person, deferredQuery));
+  const peopleById = useMemo(
+    () => new Map(people.map((person) => [person.id, person])),
+    [people],
+  );
+  const filteredPeople = useMemo(
+    () => people.filter((person) => matchesPersonQuery(person, deferredQuery)),
+    [deferredQuery, people],
+  );
 
-  const columns: ColumnDef<PersonRecord>[] = [
-    {
-      accessorKey: "displayName",
-      header: "Persona",
-      cell: ({ row }) => (
-        <button
-          className="text-left"
-          onClick={() => onSelectPerson(row.original.id)}
-          type="button"
-        >
-          <span className="block font-semibold text-slate-900">
-            {getPersonDisplayName(row.original)}
+  const columns = useMemo<ColumnDef<PersonRecord>[]>(
+    () => [
+      {
+        accessorKey: "displayName",
+        enableHiding: false,
+        header: "Persona",
+        cell: ({ row }) => (
+          <button
+            className="text-left"
+            onClick={() => onSelectPerson(row.original.id)}
+            type="button"
+          >
+            <span className="block font-semibold text-slate-900">
+              {getPersonDisplayName(row.original)}
+            </span>
+            <span className="block text-xs uppercase tracking-[0.18em] text-slate-500">
+              {row.original.sex ?? "non indicato"}
+            </span>
+          </button>
+        ),
+        sortingFn: (rowA, rowB) =>
+          getPersonDisplayName(rowA.original).localeCompare(getPersonDisplayName(rowB.original)),
+      },
+      {
+        accessorKey: "birthDate",
+        header: "Nascita",
+        cell: ({ row }) => (
+          <div>
+            <span className="block">{formatDateLabel(row.original.birthDate)}</span>
+            <span className="block text-xs text-slate-500">{row.original.birthPlace ?? "-"}</span>
+          </div>
+        ),
+        sortingFn: "datetime",
+      },
+      {
+        accessorKey: "deathDate",
+        header: "Decesso",
+        cell: ({ row }) => (
+          <div>
+            <span className="block">
+              {row.original.deathDate ? formatDateLabel(row.original.deathDate) : "Ancora in vita"}
+            </span>
+            <span className="block text-xs text-slate-500">{row.original.deathPlace ?? "-"}</span>
+          </div>
+        ),
+        sortingFn: "datetime",
+      },
+      {
+        id: "partners",
+        header: "Partner",
+        accessorFn: (row) => getPartnersLabel(row, peopleById),
+        cell: ({ row }) => (
+          <span className="text-sm text-slate-700">
+            {getPartnersLabel(row.original, peopleById)}
           </span>
-          <span className="block text-xs uppercase tracking-[0.18em] text-slate-500">
-            {row.original.sex ?? "non indicato"}
+        ),
+      },
+      {
+        id: "parentsCount",
+        header: "Genitori",
+        accessorFn: (row) => row.parentIds.length,
+        cell: ({ row }) => row.original.parentIds.length,
+      },
+      {
+        id: "childrenCount",
+        header: "Figli",
+        accessorFn: (row) => row.childIds.length,
+        cell: ({ row }) => row.original.childIds.length,
+      },
+      {
+        accessorKey: "birthPlace",
+        header: "Luogo di nascita",
+        cell: ({ row }) => row.original.birthPlace ?? "-",
+      },
+      {
+        accessorKey: "profession",
+        header: "Professione",
+        cell: ({ row }) => row.original.profession ?? "-",
+      },
+      {
+        accessorKey: "notes",
+        header: "Note",
+        cell: ({ row }) => (
+          <span className="block max-w-xs text-sm text-slate-700">
+            {row.original.notes ?? "-"}
           </span>
-        </button>
-      ),
-      sortingFn: (rowA, rowB) =>
-        getPersonDisplayName(rowA.original).localeCompare(getPersonDisplayName(rowB.original)),
-    },
-    {
-      accessorKey: "birthDate",
-      header: "Nascita",
-      cell: ({ row }) => (
-        <div>
-          <span className="block">{formatDateLabel(row.original.birthDate)}</span>
-          <span className="block text-xs text-slate-500">{row.original.birthPlace ?? "-"}</span>
-        </div>
-      ),
-      sortingFn: "datetime",
-    },
-    {
-      accessorKey: "deathDate",
-      header: "Decesso",
-      cell: ({ row }) => (
-        <div>
-          <span className="block">
-            {row.original.deathDate ? formatDateLabel(row.original.deathDate) : "Ancora in vita"}
-          </span>
-          <span className="block text-xs text-slate-500">{row.original.deathPlace ?? "-"}</span>
-        </div>
-      ),
-      sortingFn: "datetime",
-    },
-    {
-      id: "partners",
-      header: "Partner",
-      accessorFn: (row) => getPartnersLabel(row, peopleById),
-      cell: ({ row }) => (
-        <span className="text-sm text-slate-700">
-          {getPartnersLabel(row.original, peopleById)}
-        </span>
-      ),
-    },
-    {
-      id: "parentsCount",
-      header: "Genitori",
-      accessorFn: (row) => row.parentIds.length,
-      cell: ({ row }) => row.original.parentIds.length,
-    },
-    {
-      id: "childrenCount",
-      header: "Figli",
-      accessorFn: (row) => row.childIds.length,
-      cell: ({ row }) => row.original.childIds.length,
-    },
-    {
-      accessorKey: "birthPlace",
-      header: "Luogo di nascita",
-      cell: ({ row }) => row.original.birthPlace ?? "-",
-    },
-    {
-      accessorKey: "profession",
-      header: "Professione",
-      cell: ({ row }) => row.original.profession ?? "-",
-    },
-    {
-      accessorKey: "notes",
-      header: "Note",
-      cell: ({ row }) => (
-        <span className="block max-w-xs text-sm text-slate-700">
-          {row.original.notes ?? "-"}
-        </span>
-      ),
-    },
-  ];
+        ),
+      },
+    ],
+    [onSelectPerson, peopleById],
+  );
 
   const table = useReactTable({
     data: filteredPeople,
     columns,
+    getRowId: (row) => row.id,
     state: {
       sorting,
       columnVisibility,
@@ -164,6 +175,7 @@ export function PeopleTable({ people, query, onSelectPerson }: PeopleTableProps)
               <input
                 checked={column.getIsVisible()}
                 className="h-3.5 w-3.5 rounded border-[#b9ab90] text-[#153524]"
+                disabled={!column.getCanHide()}
                 onChange={column.getToggleVisibilityHandler()}
                 type="checkbox"
               />

@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo } from "react";
+
 import {
   Background,
   Controls,
@@ -162,10 +164,16 @@ function buildTreeEdges(
 }
 
 export function TreeDiagramView({ people, query, onSelectPerson }: TreeDiagramViewProps) {
-  const { nodes, positionById, generations } = buildTreeNodes(people, query);
-  const edges = buildTreeEdges(people, positionById);
-  const totalGenerations =
-    generations.size > 0 ? Math.max(...Array.from(generations.values())) + 1 : 0;
+  const { edges, nodes, totalGenerations } = useMemo(() => {
+    const { nodes: nextNodes, positionById, generations } = buildTreeNodes(people, query);
+
+    return {
+      nodes: nextNodes,
+      edges: buildTreeEdges(people, positionById),
+      totalGenerations:
+        generations.size > 0 ? Math.max(...Array.from(generations.values())) + 1 : 0,
+    };
+  }, [people, query]);
 
   return (
     <section className="overflow-hidden rounded-[28px] border border-[#d9cfbd] bg-[#f8f1e4] shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
@@ -194,6 +202,7 @@ export function TreeDiagramView({ people, query, onSelectPerson }: TreeDiagramVi
           nodes={nodes}
           nodesConnectable={false}
           nodesDraggable={false}
+          onlyRenderVisibleElements
           onNodeClick={(_, node) => onSelectPerson(node.id)}
           panOnDrag
           proOptions={{ hideAttribution: true }}

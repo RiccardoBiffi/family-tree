@@ -1,5 +1,7 @@
 "use client";
 
+import { useMemo } from "react";
+
 import {
   Background,
   Controls,
@@ -137,8 +139,17 @@ function buildTimelineEdges(people: PersonRecord[]): Edge[] {
 }
 
 export function TimelineView({ people, query, onSelectPerson }: TimelineViewProps) {
-  const { nodes, positionById, minYear, maxYear } = buildTimelineNodes(people, query);
-  const edges = buildTimelineEdges(people);
+  const { edges, laneCount, maxYear, minYear, nodes } = useMemo(() => {
+    const { maxYear, minYear, nodes, positionById } = buildTimelineNodes(people, query);
+
+    return {
+      nodes,
+      edges: buildTimelineEdges(people),
+      minYear,
+      maxYear,
+      laneCount: positionById.size,
+    };
+  }, [people, query]);
 
   return (
     <section className="overflow-hidden rounded-[28px] border border-[#d9cfbd] bg-[#f8f1e4] shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
@@ -154,7 +165,7 @@ export function TimelineView({ people, query, onSelectPerson }: TimelineViewProp
             Intervallo {minYear} - {maxYear}
           </span>
           <span className="rounded-full bg-white px-3 py-2">
-            {positionById.size} corsie temporali
+            {laneCount} corsie temporali
           </span>
         </div>
       </div>
@@ -169,6 +180,7 @@ export function TimelineView({ people, query, onSelectPerson }: TimelineViewProp
           nodes={nodes}
           nodesConnectable={false}
           nodesDraggable={false}
+          onlyRenderVisibleElements
           onNodeClick={(_, node) => onSelectPerson(node.id)}
           panOnDrag
           proOptions={{ hideAttribution: true }}

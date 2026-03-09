@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 
 import { AdminPanel } from "@/components/AdminPanel";
 import { PeopleTable } from "@/components/PeopleTable";
@@ -31,6 +31,7 @@ const viewLabels: Record<AppView, { title: string; subtitle: string }> = {
     subtitle: "La stessa famiglia disposta lungo una linea temporale interattiva.",
   },
 };
+const emptyPeople: PersonRecord[] = [];
 
 export function FamilyTreeApp() {
   const { snapshot, isLoaded, upsertPerson, deletePerson, resetDemoData } = useFamilyTreeStore();
@@ -39,6 +40,30 @@ export function FamilyTreeApp() {
   const [query, setQuery] = useState("");
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   const [editingPersonId, setEditingPersonId] = useState<string | null>(null);
+  const deferredQuery = useDeferredValue(query);
+  const people = snapshot?.people ?? emptyPeople;
+  const peopleById = useMemo(
+    () => new Map(people.map((person) => [person.id, person])),
+    [people],
+  );
+  const selectedPerson = useMemo(
+    () => (selectedPersonId && snapshot ? peopleById.get(selectedPersonId) ?? null : null),
+    [peopleById, selectedPersonId, snapshot],
+  );
+  const editingPerson = useMemo(
+    () => (editingPersonId && snapshot ? peopleById.get(editingPersonId) ?? null : null),
+    [editingPersonId, peopleById, snapshot],
+  );
+  const warnings = useMemo(() => (snapshot ? validateFamilyTree(snapshot) : []), [snapshot]);
+  const totalFamilies = useMemo(
+    () =>
+      new Set(
+        people.flatMap((person) =>
+          person.partnerIds.map((partnerId) => [person.id, partnerId].sort().join("--")),
+        ),
+      ).size,
+    [people],
+  );
 
   useEffect(() => {
     if (!snapshot) {
@@ -66,16 +91,6 @@ export function FamilyTreeApp() {
       </main>
     );
   }
-
-  const peopleById = new Map(snapshot.people.map((person) => [person.id, person]));
-  const selectedPerson = selectedPersonId ? peopleById.get(selectedPersonId) ?? null : null;
-  const editingPerson = editingPersonId ? peopleById.get(editingPersonId) ?? null : null;
-  const warnings = validateFamilyTree(snapshot);
-  const totalFamilies = new Set(
-    snapshot.people.flatMap((person) =>
-      person.partnerIds.map((partnerId) => [person.id, partnerId].sort().join("--")),
-    ),
-  ).size;
 
   const handleSelectPerson = (personId: string) => {
     setSelectedPersonId(personId);
@@ -241,7 +256,7 @@ export function FamilyTreeApp() {
               <TreeDiagramView
                 onSelectPerson={handleSelectPerson}
                 people={snapshot.people}
-                query={query}
+                query={deferredQuery}
               />
             ) : null}
             {view === "table" ? (
@@ -251,7 +266,7 @@ export function FamilyTreeApp() {
               <TimelineView
                 onSelectPerson={handleSelectPerson}
                 people={snapshot.people}
-                query={query}
+                query={deferredQuery}
               />
             ) : null}
           </div>
