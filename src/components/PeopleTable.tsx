@@ -18,6 +18,7 @@ import {
   getPersonDisplayName,
   matchesPersonQuery,
 } from "@/utils/familyTree";
+import { PersonGlyph } from "@/components/PersonGlyph";
 
 interface PeopleTableProps {
   people: PersonRecord[];
@@ -26,11 +27,56 @@ interface PeopleTableProps {
 }
 
 function countLabel(total: number): string {
-  if (total === 1) {
-    return "1 persona";
+  return total === 1 ? "1 persona" : `${total} persone`;
+}
+
+function getLegalName(person: PersonRecord): string {
+  return (
+    [person.name, person.surname].filter(Boolean).join(" ").trim() ||
+    getPersonDisplayName(person)
+  );
+}
+
+function formatTableDate(value: string | null): string {
+  return formatDateLabel(value).replace(/^0/, "");
+}
+
+function PersonAvatar({ person }: { person: PersonRecord }) {
+  return (
+    <span
+      aria-hidden="true"
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[#b9c5b8] bg-[#edf2e9] text-[#0c3b24]"
+    >
+      <PersonGlyph className="h-5 w-5" sex={person.sex} />
+    </span>
+  );
+}
+
+function ColumnsIcon() {
+  return (
+    <svg aria-hidden="true" fill="none" height="18" viewBox="0 0 24 24" width="18">
+      <rect height="14" rx="2" stroke="currentColor" strokeWidth="1.8" width="18" x="3" y="5" />
+      <path d="M9 5v14M15 5v14" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function SortIcon({ direction }: { direction: false | "asc" | "desc" }) {
+  if (!direction) {
+    return null;
   }
 
-  return `${total} persone`;
+  return (
+    <svg aria-hidden="true" fill="none" height="14" viewBox="0 0 16 16" width="14">
+      <path
+        d={direction === "asc" ? "M8 13V3m0 0L4.5 6.5M8 3l3.5 3.5" : "M8 3v10m0 0 3.5-3.5M8 13 4.5 9.5"}
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.6"
+      />
+    </svg>
+  );
 }
 
 export function PeopleTable({ people, query, onSelectPerson }: PeopleTableProps) {
@@ -38,7 +84,7 @@ export function PeopleTable({ people, query, onSelectPerson }: PeopleTableProps)
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
     deathDate: false,
     notes: false,
-    birthPlace: false,
+    partners: false,
   });
   const deferredQuery = useDeferredValue(query);
   const peopleById = useMemo(
@@ -53,59 +99,42 @@ export function PeopleTable({ people, query, onSelectPerson }: PeopleTableProps)
   const columns = useMemo<ColumnDef<PersonRecord>[]>(
     () => [
       {
-        accessorKey: "displayName",
+        id: "displayName",
         enableHiding: false,
         header: "Persona",
+        accessorFn: (row) => getLegalName(row),
         cell: ({ row }) => (
           <button
-            className="text-left"
+            className="group flex min-h-11 items-center gap-3 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
             onClick={() => onSelectPerson(row.original.id)}
             type="button"
           >
-            <span className="block font-semibold text-slate-900">
-              {getPersonDisplayName(row.original)}
-            </span>
-            <span className="block text-xs uppercase tracking-[0.18em] text-slate-500">
-              {row.original.sex ?? "non indicato"}
+            <PersonAvatar person={row.original} />
+            <span className="font-semibold text-[#152219] transition group-hover:text-[#0c3b24]">
+              {getLegalName(row.original)}
             </span>
           </button>
         ),
         sortingFn: (rowA, rowB) =>
-          getPersonDisplayName(rowA.original).localeCompare(getPersonDisplayName(rowB.original)),
+          getLegalName(rowA.original).localeCompare(
+            getLegalName(rowB.original),
+          ),
       },
       {
         accessorKey: "birthDate",
         header: "Nascita",
-        cell: ({ row }) => (
-          <div>
-            <span className="block">{formatDateLabel(row.original.birthDate)}</span>
-            <span className="block text-xs text-slate-500">{row.original.birthPlace ?? "-"}</span>
-          </div>
-        ),
+        cell: ({ row }) => formatTableDate(row.original.birthDate),
         sortingFn: "datetime",
       },
       {
-        accessorKey: "deathDate",
-        header: "Decesso",
-        cell: ({ row }) => (
-          <div>
-            <span className="block">
-              {row.original.deathDate ? formatDateLabel(row.original.deathDate) : "Ancora in vita"}
-            </span>
-            <span className="block text-xs text-slate-500">{row.original.deathPlace ?? "-"}</span>
-          </div>
-        ),
-        sortingFn: "datetime",
+        accessorKey: "birthPlace",
+        header: "Luogo",
+        cell: ({ row }) => row.original.birthPlace ?? "—",
       },
       {
-        id: "partners",
-        header: "Partner",
-        accessorFn: (row) => getPartnersLabel(row, peopleById),
-        cell: ({ row }) => (
-          <span className="text-sm text-slate-700">
-            {getPartnersLabel(row.original, peopleById)}
-          </span>
-        ),
+        accessorKey: "profession",
+        header: "Professione",
+        cell: ({ row }) => row.original.profession ?? "—",
       },
       {
         id: "parentsCount",
@@ -120,21 +149,26 @@ export function PeopleTable({ people, query, onSelectPerson }: PeopleTableProps)
         cell: ({ row }) => row.original.childIds.length,
       },
       {
-        accessorKey: "birthPlace",
-        header: "Luogo di nascita",
-        cell: ({ row }) => row.original.birthPlace ?? "-",
+        accessorKey: "deathDate",
+        header: "Decesso",
+        cell: ({ row }) =>
+          row.original.deathDate
+            ? formatTableDate(row.original.deathDate)
+            : "In vita",
+        sortingFn: "datetime",
       },
       {
-        accessorKey: "profession",
-        header: "Professione",
-        cell: ({ row }) => row.original.profession ?? "-",
+        id: "partners",
+        header: "Partner",
+        accessorFn: (row) => getPartnersLabel(row, peopleById),
+        cell: ({ row }) => getPartnersLabel(row.original, peopleById),
       },
       {
         accessorKey: "notes",
         header: "Note",
         cell: ({ row }) => (
-          <span className="block max-w-xs text-sm text-slate-700">
-            {row.original.notes ?? "-"}
+          <span className="block min-w-64 max-w-sm leading-5 text-[#526158]">
+            {row.original.notes ?? "—"}
           </span>
         ),
       },
@@ -157,70 +191,87 @@ export function PeopleTable({ people, query, onSelectPerson }: PeopleTableProps)
   });
 
   return (
-    <section className="overflow-hidden rounded-[28px] border border-[#d9cfbd] bg-[#f8f1e4] shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#d9cfbd] px-5 py-4">
-        <div>
-          <p className="text-xs uppercase tracking-[0.24em] text-[#5f6d63]">Vista tabella</p>
-          <h2 className="font-[family-name:var(--font-display)] text-2xl text-slate-900">
-            Elenco ordinabile e filtrabile
-          </h2>
-          <p className="mt-1 text-sm text-slate-600">{countLabel(filteredPeople.length)}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {table.getAllLeafColumns().map((column) => (
-            <label
-              className="flex items-center gap-2 rounded-full border border-[#d9cfbd] bg-white px-3 py-2 text-xs uppercase tracking-[0.18em] text-slate-600"
-              key={column.id}
-            >
-              <input
-                checked={column.getIsVisible()}
-                className="h-3.5 w-3.5 rounded border-[#b9ab90] text-[#153524]"
-                disabled={!column.getCanHide()}
-                onChange={column.getToggleVisibilityHandler()}
-                type="checkbox"
-              />
-              {typeof column.columnDef.header === "string" ? column.columnDef.header : column.id}
-            </label>
-          ))}
-        </div>
+    <section
+      aria-label="Tabella delle persone"
+      className="flex min-h-0 flex-1 flex-col overflow-hidden border-t border-[#dfe5df] bg-white"
+    >
+      <div className="flex min-h-16 shrink-0 items-center justify-between gap-4 border-b border-[#dfe5df] px-5 sm:px-9">
+        <p aria-live="polite" className="text-sm font-medium text-[#34443a]">
+          {countLabel(filteredPeople.length)}
+        </p>
+
+        <details className="group relative">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 rounded-xl border border-[#d5ddd5] bg-white px-4 text-sm font-medium text-[#26372c] outline-none transition hover:border-[#9cac9d] focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2 [&::-webkit-details-marker]:hidden">
+            <ColumnsIcon />
+            Colonne
+          </summary>
+          <div className="absolute right-0 z-20 mt-2 w-64 rounded-2xl border border-[#d5ddd5] bg-white p-2 shadow-[0_18px_48px_rgba(24,45,31,0.14)]">
+            <p className="px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-[#65746a]">
+              Colonne visibili
+            </p>
+            {table.getAllLeafColumns().map((column) => (
+              <label
+                className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm text-[#34443a] transition hover:bg-[#f4f7f3]"
+                key={column.id}
+              >
+                <input
+                  checked={column.getIsVisible()}
+                  className="h-4 w-4 accent-[#0c3b24]"
+                  disabled={!column.getCanHide()}
+                  onChange={column.getToggleVisibilityHandler()}
+                  type="checkbox"
+                />
+                {typeof column.columnDef.header === "string" ? column.columnDef.header : column.id}
+              </label>
+            ))}
+          </div>
+        </details>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full border-separate border-spacing-0">
-          <thead>
+      <div className="min-h-0 flex-1 overflow-auto overscroll-contain">
+        <table className="w-full min-w-[920px] border-separate border-spacing-0 text-left">
+          <thead className="sticky top-0 z-10 bg-[#fbfcfb]">
             {table.getHeaderGroups().map((headerGroup) => (
-              <tr className="bg-[#efe2c8]" key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <th
-                    className="border-b border-[#d9cfbd] px-4 py-3 text-left text-xs uppercase tracking-[0.2em] text-slate-600"
-                    key={header.id}
-                  >
-                    {header.isPlaceholder ? null : (
-                      <button
-                        className="flex items-center gap-2"
-                        onClick={header.column.getToggleSortingHandler()}
-                        type="button"
-                      >
-                        {flexRender(header.column.columnDef.header, header.getContext())}
-                        <span className="text-[10px] text-slate-400">
-                          {{
-                            asc: "↑",
-                            desc: "↓",
-                          }[header.column.getIsSorted() as string] ?? "↕"}
-                        </span>
-                      </button>
-                    )}
-                  </th>
-                ))}
+              <tr key={headerGroup.id}>
+                {headerGroup.headers.map((header) => {
+                  const sorted = header.column.getIsSorted();
+                  const ariaSort =
+                    sorted === "asc" ? "ascending" : sorted === "desc" ? "descending" : "none";
+
+                  return (
+                    <th
+                      aria-sort={ariaSort}
+                      className="h-14 border-b border-[#dfe5df] px-5 text-sm font-semibold text-[#27362c] first:border-r first:border-[#dfe5df] first:pl-9 last:pr-9"
+                      key={header.id}
+                    >
+                      {header.isPlaceholder ? null : header.column.getCanSort() ? (
+                        <button
+                          className="flex min-h-11 min-w-11 items-center gap-2 rounded-md outline-none transition hover:text-[#0c3b24] focus-visible:ring-2 focus-visible:ring-[#0c3b24]"
+                          onClick={header.column.getToggleSortingHandler()}
+                          type="button"
+                        >
+                          {flexRender(header.column.columnDef.header, header.getContext())}
+                          {sorted ? (
+                            <span className="text-[#0c3b24]">
+                              <SortIcon direction={sorted} />
+                            </span>
+                          ) : null}
+                        </button>
+                      ) : (
+                        flexRender(header.column.columnDef.header, header.getContext())
+                      )}
+                    </th>
+                  );
+                })}
               </tr>
             ))}
           </thead>
-          <tbody className="bg-[#fffaf1]">
+          <tbody className="bg-white">
             {table.getRowModel().rows.map((row) => (
-              <tr className="transition hover:bg-white" key={row.id}>
+              <tr className="group transition-colors hover:bg-[#f7f9f6]" key={row.id}>
                 {row.getVisibleCells().map((cell) => (
                   <td
-                    className="border-b border-[#efe2c8] px-4 py-4 align-top text-sm text-slate-700"
+                    className="h-[62px] border-b border-[#e5eae5] px-5 text-sm text-[#34443a] first:border-r first:border-[#e0e6e0] first:pl-9 last:pr-9"
                     key={cell.id}
                   >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -230,6 +281,17 @@ export function PeopleTable({ people, query, onSelectPerson }: PeopleTableProps)
             ))}
           </tbody>
         </table>
+
+        {table.getRowModel().rows.length === 0 ? (
+          <div className="flex min-h-72 items-center justify-center px-6 text-center">
+            <div>
+              <p className="font-[family-name:var(--font-display)] text-2xl text-[#17351f]">
+                Nessuna persona trovata
+              </p>
+              <p className="mt-2 text-sm text-[#65746a]">Prova una ricerca diversa.</p>
+            </div>
+          </div>
+        ) : null}
       </div>
     </section>
   );

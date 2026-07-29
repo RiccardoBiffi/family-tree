@@ -1,14 +1,14 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f6efdf;
-  --foreground: #18221a;
-  --surface: #fffaf1;
-  --surface-alt: #f3e7cf;
-  --border: #d9cfbd;
-  --accent: #153524;
-  --accent-soft: #5f8f63;
-  --accent-warm: #d1a04f;
+  --background: #ffffff;
+  --foreground: #152019;
+  --surface: #ffffff;
+  --surface-alt: #f4f7f4;
+  --border: #d7ded8;
+  --accent: #0c3b24;
+  --accent-soft: #6b8172;
+  --accent-warm: #b96908;
   --font-body: "Aptos", "Segoe UI Variable", "Helvetica Neue", sans-serif;
   --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
 }
@@ -31,6 +31,7 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-body), sans-serif;
+  margin: 0;
   min-height: 100vh;
 }
 
@@ -44,4 +45,359 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+.family-tree-app,
+.family-tree-loading {
+  height: 100vh;
+  height: 100dvh;
+  width: 100%;
+  overflow: hidden;
+  background: #ffffff;
+  color: var(--foreground);
+}
+
+.family-tree-app {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.family-tree-loading {
+  display: grid;
+  place-items: center;
+  font-size: 0.875rem;
+  color: #657269;
+}
+
+.archive-shell-header {
+  position: relative;
+  z-index: 10;
+  display: grid;
+  flex: none;
+  grid-template-areas: "identity actions tabs";
+  grid-template-columns: minmax(270px, 0.75fr) minmax(330px, 1.15fr) auto;
+  align-items: center;
+  gap: 24px 32px;
+  border-bottom: 1px solid #dfe5df;
+  background: #ffffff;
+  padding: 28px clamp(24px, 2.6vw, 42px);
+}
+
+.archive-identity {
+  grid-area: identity;
+  min-width: 0;
+}
+
+.archive-identity h1 {
+  margin: 0;
+  color: #0d3a23;
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 2.55vw, 2.5rem);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1;
+}
+
+.archive-identity p {
+  margin: 9px 0 0;
+  color: #536159;
+  font-size: 0.9375rem;
+  line-height: 1.35;
+}
+
+.archive-actions {
+  grid-area: actions;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.archive-search {
+  display: flex;
+  min-width: 220px;
+  min-height: 56px;
+  flex: 1 1 300px;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #d5ddd6;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 0 16px;
+  color: #536159;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.archive-search:focus-within {
+  border-color: #779080;
+  box-shadow: 0 0 0 3px rgb(12 59 36 / 10%);
+}
+
+.archive-search__icon {
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+
+.archive-search input {
+  min-width: 0;
+  min-height: 44px;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #18261d;
+  font-size: 1rem;
+}
+
+.archive-search input::placeholder {
+  color: #536159;
+  opacity: 1;
+}
+
+.archive-admin-toolbar {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+
+.archive-admin-toolbar button {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #d5ddd6;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 0 12px;
+  color: #26372c;
+  font-size: 0.8125rem;
+  font-weight: 650;
+  white-space: nowrap;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.archive-admin-toolbar button:hover {
+  border-color: #91a296;
+  background: #f5f8f5;
+  color: #0c3b24;
+}
+
+.archive-action-icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.archive-view-navigation {
+  grid-area: tabs;
+  min-width: 0;
+}
+
+.archive-view-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(132px, 1fr));
+  overflow: hidden;
+  border: 1px solid #d5ddd6;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.archive-view-tabs button {
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 0;
+  border-left: 1px solid #d5ddd6;
+  background: #ffffff;
+  padding: 0 20px;
+  color: #152019;
+  font-size: 0.9375rem;
+  font-weight: 620;
+  white-space: nowrap;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.archive-view-tabs button:first-child {
+  border-left: 0;
+}
+
+.archive-view-tabs button:hover:not([aria-selected="true"]) {
+  background: #f5f8f5;
+}
+
+.archive-view-tabs button[aria-selected="true"] {
+  background: #0c3b24;
+  color: #ffffff;
+}
+
+.archive-view-tabs button:focus-visible,
+.archive-admin-toolbar button:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid #0c3b24;
+  outline-offset: -3px;
+}
+
+.archive-view-tabs__icon {
+  width: 21px;
+  height: 21px;
+  flex: none;
+}
+
+.family-tree-view {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.family-tree-view > section {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+}
+
+.family-tree-view[data-view="diagram"] > section,
+.family-tree-view[data-view="timeline"] > section {
+  display: flex;
+  flex-direction: column;
+}
+
+.family-tree-warnings {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  z-index: 30;
+  width: min(680px, calc(100% - 32px));
+  transform: translateX(-50%);
+  border: 1px solid #f0b8b8;
+  border-radius: 12px;
+  background: #fffafa;
+  padding: 10px 12px;
+  box-shadow: 0 12px 30px rgb(38 55 44 / 12%);
+  color: #733c3c;
+  font-size: 0.8125rem;
+}
+
+.family-tree-warnings strong {
+  display: block;
+  margin-bottom: 5px;
+}
+
+.family-tree-warnings div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+@media (max-width: 1279px) {
+  .archive-shell-header {
+    grid-template-areas:
+      "identity tabs"
+      "actions actions";
+    grid-template-columns: minmax(230px, 1fr) auto;
+    gap: 16px 24px;
+    padding-block: 20px;
+  }
+
+  .archive-actions--admin .archive-search {
+    flex-basis: 320px;
+  }
+}
+
+@media (min-width: 1280px) and (max-width: 1399px) {
+  .archive-actions--admin {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .archive-actions--admin .archive-search {
+    width: 100%;
+    min-height: 48px;
+    flex: 0 0 auto;
+  }
+}
+
+@media (max-width: 767px) {
+  .archive-shell-header {
+    grid-template-areas:
+      "identity"
+      "actions"
+      "tabs";
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    padding: 13px 14px 12px;
+  }
+
+  .archive-identity h1 {
+    font-size: 1.875rem;
+  }
+
+  .archive-identity p {
+    margin-top: 5px;
+    font-size: 0.8125rem;
+  }
+
+  .archive-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .archive-search {
+    min-width: 0;
+    min-height: 44px;
+    padding-inline: 13px;
+  }
+
+  .archive-search__icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  .archive-search input {
+    font-size: 0.9375rem;
+  }
+
+  .archive-admin-toolbar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .archive-admin-toolbar button {
+    min-width: 0;
+    padding-inline: 8px;
+    font-size: 0.75rem;
+  }
+
+  .archive-view-tabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .archive-view-tabs button {
+    min-height: 44px;
+    gap: 6px;
+    padding: 0 8px;
+    font-size: 0.8125rem;
+  }
+
+  .archive-view-tabs__icon {
+    width: 18px;
+    height: 18px;
+  }
 }

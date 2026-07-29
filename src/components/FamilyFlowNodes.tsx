@@ -3,14 +3,24 @@
 
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 
+import { PersonGlyph } from "@/components/PersonGlyph";
+import type { PersonSex } from "@/models/Person";
+
 export interface FamilyTreeNodeData extends Record<string, unknown> {
-  label: string;
-  secondaryLabel: string;
-  tertiaryLabel: string;
-  photo: string | null;
+  ariaLabel: string;
+  birthPlace: string | null;
+  compact: boolean;
+  displayLabel: string;
   highlighted: boolean;
-  tags: string[];
+  label: string;
+  onSelect: () => void;
+  photo: string | null;
+  profession: string | null;
+  secondaryLabel: string;
+  sex: PersonSex;
 }
+
+export type FamilyJunctionNodeData = Record<string, never>;
 
 export interface FamilyTimelineNodeData extends Record<string, unknown> {
   label: string;
@@ -20,20 +30,42 @@ export interface FamilyTimelineNodeData extends Record<string, unknown> {
   highlighted: boolean;
 }
 
-function InitialsAvatar({ label, photo }: { label: string; photo: string | null }) {
+function PersonAvatar({
+  compact,
+  photo,
+  sex,
+}: {
+  compact: boolean;
+  photo: string | null;
+  sex: PersonSex;
+}) {
   if (photo) {
-    return <img alt={label} className="h-12 w-12 rounded-2xl object-cover" src={photo} />;
+    return (
+      <img
+        alt=""
+        aria-hidden="true"
+        className={[
+          "shrink-0 rounded-full border border-[#aab7a9] object-cover",
+          compact ? "h-8 w-8" : "h-11 w-11",
+        ].join(" ")}
+        src={photo}
+      />
+    );
   }
 
   return (
-    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#153524] text-sm font-semibold text-white">
-      {label
-        .split(" ")
-        .slice(0, 2)
-        .map((part) => part[0])
-        .join("")
-        .toUpperCase()}
-    </div>
+    <span
+      aria-hidden="true"
+      className={[
+        "flex shrink-0 items-center justify-center rounded-full border border-[#aab7a9] bg-[#eef2e8] font-bold tracking-[0.08em] text-[#17452d]",
+        compact ? "h-8 w-8 text-[9px]" : "h-11 w-11 text-xs",
+      ].join(" ")}
+    >
+      <PersonGlyph
+        className={compact ? "h-[18px] w-[18px]" : "h-6 w-6"}
+        sex={sex}
+      />
+    </span>
   );
 }
 
@@ -41,61 +73,129 @@ export function FamilyTreeNode({ data }: NodeProps) {
   const nodeData = data as unknown as FamilyTreeNodeData;
 
   return (
-    <div
-      className={[
-        "w-64 rounded-[24px] border bg-[#fffaf1] p-4 shadow-[0_18px_60px_rgba(15,23,42,0.14)] transition",
-        nodeData.highlighted
-          ? "border-[#d1a04f] ring-4 ring-[#d1a04f]/20"
-          : "border-[#d9cfbd] hover:border-[#8ea684]",
-      ].join(" ")}
-    >
+    <>
       <Handle
-        className="!h-3 !w-3 !border-2 !border-[#153524] !bg-[#fffaf1]"
+        className="!h-1 !w-1 !border-0 !bg-transparent !opacity-0"
         id="top"
         position={Position.Top}
         type="target"
       />
       <Handle
-        className="!h-3 !w-3 !border-2 !border-[#153524] !bg-[#fffaf1]"
+        className="!h-1 !w-1 !border-0 !bg-transparent !opacity-0"
         id="left"
         position={Position.Left}
         type="target"
       />
-      <div className="flex items-start gap-3">
-        <InitialsAvatar label={nodeData.label} photo={nodeData.photo} />
-        <div className="min-w-0">
-          <p className="truncate text-base font-semibold text-slate-900">{nodeData.label}</p>
-          <p className="mt-1 text-xs uppercase tracking-[0.18em] text-[#5f6d63]">
+      <button
+        aria-label={nodeData.ariaLabel}
+        className={[
+          "nodrag nopan flex h-full w-full overflow-hidden rounded-xl border bg-white shadow-[0_6px_18px_rgba(20,53,36,0.08)]",
+          nodeData.compact
+            ? "flex-col items-center justify-center gap-1 px-1.5 py-1.5 text-center"
+            : "items-center gap-3 px-3 py-2.5 text-left",
+          "transition-[border-color,box-shadow,background-color] hover:border-[#6d8d76] hover:bg-[#fdfefb] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[#17452d]/35 motion-reduce:transition-none",
+          nodeData.highlighted
+            ? "border-[#c8791a] bg-[#fffaf0] shadow-[0_0_0_3px_rgba(200,121,26,0.18),0_8px_22px_rgba(20,53,36,0.1)]"
+            : "border-[#315a40]",
+        ].join(" ")}
+        data-query-match={nodeData.highlighted ? "true" : undefined}
+        onClick={(event) => {
+          event.stopPropagation();
+          nodeData.onSelect();
+        }}
+        title={nodeData.ariaLabel}
+        type="button"
+      >
+        <PersonAvatar
+          compact={nodeData.compact}
+          photo={nodeData.photo}
+          sex={nodeData.sex}
+        />
+        <span className="min-w-0 flex-1">
+          <span
+            className={[
+              "block font-bold text-[#101712]",
+              nodeData.compact
+                ? "line-clamp-2 text-[11px] leading-[13px]"
+                : "truncate text-[15px] leading-5",
+            ].join(" ")}
+          >
+            {nodeData.displayLabel}
+          </span>
+          <span
+            className={[
+              "block text-[#354239]",
+              nodeData.compact
+                ? "truncate text-[9px] leading-3"
+                : "truncate text-[11px] leading-4",
+            ].join(" ")}
+          >
             {nodeData.secondaryLabel}
-          </p>
-          <p className="mt-2 text-sm text-slate-600">{nodeData.tertiaryLabel}</p>
-        </div>
-      </div>
-      {nodeData.tags.length > 0 ? (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {nodeData.tags.slice(0, 3).map((tag) => (
+          </span>
+          {nodeData.profession ? (
             <span
-              className="rounded-full bg-[#153524]/8 px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-[#153524]"
-              key={tag}
+              className={[
+                "block text-[#28342c]",
+                nodeData.compact
+                  ? "line-clamp-2 text-[9px] leading-[11px]"
+                  : "truncate text-xs leading-4",
+              ].join(" ")}
             >
-              {tag}
+              {nodeData.profession}
             </span>
-          ))}
-        </div>
-      ) : null}
+          ) : null}
+          {nodeData.birthPlace ? (
+            <span
+              className={[
+                "block truncate text-[#4b584f]",
+                nodeData.compact
+                  ? "text-[9px] leading-[11px]"
+                  : "text-[11px] leading-4",
+              ].join(" ")}
+            >
+              {nodeData.birthPlace}
+            </span>
+          ) : null}
+        </span>
+      </button>
       <Handle
-        className="!h-3 !w-3 !border-2 !border-[#153524] !bg-[#fffaf1]"
+        className="!h-1 !w-1 !border-0 !bg-transparent !opacity-0"
         id="bottom"
         position={Position.Bottom}
         type="source"
       />
       <Handle
-        className="!h-3 !w-3 !border-2 !border-[#153524] !bg-[#fffaf1]"
+        className="!h-1 !w-1 !border-0 !bg-transparent !opacity-0"
         id="right"
         position={Position.Right}
         type="source"
       />
-    </div>
+    </>
+  );
+}
+
+export function FamilyJunctionNode() {
+  return (
+    <span aria-hidden="true" className="block h-0.5 w-0.5">
+      <Handle
+        className="!h-px !w-px !border-0 !bg-transparent !opacity-0"
+        id="left"
+        position={Position.Left}
+        type="target"
+      />
+      <Handle
+        className="!h-px !w-px !border-0 !bg-transparent !opacity-0"
+        id="right"
+        position={Position.Right}
+        type="source"
+      />
+      <Handle
+        className="!h-px !w-px !border-0 !bg-transparent !opacity-0"
+        id="bottom"
+        position={Position.Bottom}
+        type="source"
+      />
+    </span>
   );
 }
 
@@ -136,6 +236,7 @@ export function FamilyTimelineNode({ data }: NodeProps) {
 }
 
 export const familyNodeTypes = {
+  familyJunction: FamilyJunctionNode,
   familyTimeline: FamilyTimelineNode,
   familyTree: FamilyTreeNode,
 };

@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 
 import { ArchiveActions } from "@/components/ArchiveActions";
+import { ArchiveIcon } from "@/components/ArchiveIcon";
 import { PeopleTable } from "@/components/PeopleTable";
 import { PersonEditorModal } from "@/components/PersonEditorModal";
 import { PersonModal } from "@/components/PersonModal";
@@ -29,36 +29,35 @@ interface FamilyTreeAppProps {
   mode: AppMode;
 }
 
-const viewLabels: Record<AppView, { title: string; subtitle: string }> = {
-  diagram: {
-    title: "Diagramma",
-    subtitle: "Navigazione libera con zoom, panning e dettagli contestuali.",
-  },
-  table: {
-    title: "Tabella",
-    subtitle: "Ordinamento rapido, filtri testuali e colonne personalizzabili.",
-  },
-  timeline: {
-    title: "Timeline",
-    subtitle: "Scorrimento orizzontale dalla nascita piu' antica fino a oggi.",
-  },
-};
+const viewOptions: ReadonlyArray<{ id: AppView; label: string }> = [
+  { id: "diagram", label: "Diagramma" },
+  { id: "table", label: "Tabella" },
+  { id: "timeline", label: "Timeline" },
+];
 const emptyPeople: PersonRecord[] = [];
 
-function getAccessCopy(mode: AppMode) {
-  if (mode === "admin") {
-    return {
-      eyebrow: "Area amministrazione locale",
-      title: "Modifica attiva su /admin",
-      body: "Qui puoi creare nuove schede, modificare quelle esistenti e ripristinare i dati demo. Nessuna informazione viene inviata al server.",
-    };
+function getArchiveTitle(title: string, familyName: string) {
+  if (familyName.trim()) {
+    return `Archivio ${familyName.trim()}`;
   }
 
-  return {
-    eyebrow: "Consultazione",
-    title: "Archivio pubblico in sola lettura",
-    body: "Questa pagina serve a consultare l'albero genealogico. Per intervenire sui dati devi usare il percorso /admin nello stesso browser.",
-  };
+  return title;
+}
+
+function formatArchiveDate(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("it-IT", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  })
+    .format(date)
+    .replaceAll(".", "");
 }
 
 export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
@@ -69,7 +68,6 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
   const [editorState, setEditorState] = useState<EditorState | null>(null);
   const deferredQuery = useDeferredValue(query);
   const isAdmin = mode === "admin";
-  const accessCopy = getAccessCopy(mode);
   const people = snapshot?.people ?? emptyPeople;
   const peopleById = useMemo(
     () => new Map(people.map((person) => [person.id, person])),
@@ -91,15 +89,6 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
     return snapshot ? peopleById.get(editorState.personId) ?? null : null;
   }, [editorState, peopleById, snapshot]);
   const warnings = useMemo(() => (snapshot ? validateFamilyTree(snapshot) : []), [snapshot]);
-  const totalFamilies = useMemo(
-    () =>
-      new Set(
-        people.flatMap((person) =>
-          person.partnerIds.map((partnerId) => [person.id, partnerId].sort().join("--")),
-        ),
-      ).size,
-    [people],
-  );
   const isEditorOpen = isAdmin && editorState !== null && editorPerson !== null;
   const isPersonModalOpen = selectedPerson !== null && !isEditorOpen;
 
@@ -128,16 +117,20 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
 
   if (!isLoaded || !snapshot) {
     return (
-      <main className="min-h-screen bg-[linear-gradient(180deg,#f6efdf_0%,#efe2c8_100%)] px-4 py-10 text-slate-900">
-        <div className="mx-auto max-w-7xl rounded-[36px] border border-[#d9cfbd] bg-white/70 px-8 py-16 text-center shadow-[0_30px_120px_rgba(15,23,42,0.08)] backdrop-blur">
-          <p className="text-xs uppercase tracking-[0.34em] text-[#5f6d63]">Family tree</p>
-          <h1 className="mt-4 font-[family-name:var(--font-display)] text-5xl leading-none text-slate-900">
-            Sto preparando l&apos;archivio genealogico
-          </h1>
-        </div>
+      <main aria-busy="true" className="family-tree-loading">
+        <p>Sto preparando l&apos;archivio</p>
       </main>
     );
   }
+
+  const archiveTitle = getArchiveTitle(
+    snapshot.metadata.title,
+    snapshot.metadata.familyName,
+  );
+  const archiveDate = formatArchiveDate(snapshot.metadata.updatedAt);
+  const peopleLabel = `${snapshot.people.length} ${
+    snapshot.people.length === 1 ? "persona" : "persone"
+  }`;
 
   const handleSelectPerson = (personId: string) => {
     setEditorState(null);
@@ -197,71 +190,16 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
   };
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#f6efdf_0%,#efe2c8_100%)] px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <section className="overflow-hidden rounded-[36px] border border-[#d9cfbd] bg-[linear-gradient(140deg,#fcfaf4_0%,#f3e9d4_46%,#dfc287_100%)] shadow-[0_30px_120px_rgba(15,23,42,0.08)]">
-          <div className="grid gap-8 px-6 py-8 lg:grid-cols-[1.6fr_0.9fr] lg:px-8">
-            <div>
-              <p className="text-xs uppercase tracking-[0.34em] text-[#5f6d63]">
-                Archivio locale senza server
-              </p>
-              <h1 className="mt-4 max-w-3xl font-[family-name:var(--font-display)] text-5xl leading-none text-[#132718] sm:text-6xl">
-                {snapshot.metadata.title}
-              </h1>
-              <p className="mt-4 max-w-2xl text-base leading-7 text-slate-700">
-                {snapshot.metadata.description}
-              </p>
-              <div className="mt-6 flex flex-wrap gap-3">
-                <span className="rounded-full bg-white/90 px-4 py-2 text-sm font-medium text-slate-700">
-                  {snapshot.people.length} persone archiviate
-                </span>
-                <span className="rounded-full bg-white/90 px-4 py-2 text-sm font-medium text-slate-700">
-                  {totalFamilies} relazioni di coppia
-                </span>
-                <span className="rounded-full bg-white/90 px-4 py-2 text-sm font-medium text-slate-700">
-                  Ultimo aggiornamento{" "}
-                  {new Date(snapshot.metadata.updatedAt).toLocaleDateString("it-IT")}
-                </span>
-              </div>
-            </div>
-
-            <div className="rounded-[30px] border border-white/60 bg-white/75 p-5 backdrop-blur">
-              <p className="text-xs uppercase tracking-[0.24em] text-[#5f6d63]">
-                {accessCopy.eyebrow}
-              </p>
-              <h2 className="mt-2 text-xl font-semibold text-slate-900">{accessCopy.title}</h2>
-              <p className="mt-4 text-sm leading-6 text-slate-600">{accessCopy.body}</p>
-              <div className="mt-5 flex flex-wrap gap-2">
-                <span className="rounded-full bg-[#f4ecd9] px-4 py-2 text-xs uppercase tracking-[0.18em] text-[#153524]">
-                  {isAdmin ? "Modifica locale attiva" : "Sola lettura"}
-                </span>
-                <Link
-                  className="rounded-full border border-[#d9cfbd] bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-[#5f8f63] hover:text-[#153524]"
-                  href={isAdmin ? "/" : "/admin"}
-                >
-                  {isAdmin ? "Apri la vista visitatore" : "Vai a /admin"}
-                </Link>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {warnings.length > 0 ? (
-          <section className="rounded-[28px] border border-[#e0c28f] bg-[#fff8eb] px-5 py-5 shadow-[0_18px_60px_rgba(15,23,42,0.05)]">
-            <p className="text-xs uppercase tracking-[0.24em] text-[#9b6a1d]">Controlli di coerenza</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {warnings.map((warning) => (
-                <span
-                  className="rounded-full border border-[#f0d7ad] bg-white px-3 py-2 text-sm text-[#805821]"
-                  key={warning}
-                >
-                  {warning}
-                </span>
-              ))}
-            </div>
-          </section>
-        ) : null}
-
+    <main className="family-tree-app">
+      <header className="archive-shell-header">
+        <div className="archive-identity">
+          <h1>{archiveTitle}</h1>
+          <p>
+            {peopleLabel}
+            <span aria-hidden="true"> · </span>
+            <span>Aggiornato {archiveDate}</span>
+          </p>
+        </div>
         <ArchiveActions
           mode={mode}
           onCreatePerson={handleCreatePerson}
@@ -269,37 +207,46 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
           onResetDemoData={handleResetDemo}
           query={query}
         />
+        <nav aria-label="Visualizzazioni archivio" className="archive-view-navigation">
+          <div className="archive-view-tabs" role="tablist">
+            {viewOptions.map((currentView) => (
+              <button
+                aria-controls="family-tree-view-panel"
+                aria-selected={view === currentView.id}
+                id={`family-tree-${currentView.id}-tab`}
+                key={currentView.id}
+                onClick={() => setView(currentView.id)}
+                role="tab"
+                type="button"
+              >
+                <ArchiveIcon
+                  className="archive-view-tabs__icon"
+                  name={currentView.id}
+                />
+                <span>{currentView.label}</span>
+              </button>
+            ))}
+          </div>
+        </nav>
+      </header>
 
-        <section className="rounded-[28px] border border-[#d9cfbd] bg-[#f8f1e4] px-5 py-5 shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
-          <div className="flex flex-wrap items-start justify-between gap-4">
+      <section
+        aria-labelledby={`family-tree-${view}-tab`}
+        className="family-tree-view"
+        data-view={view}
+        id="family-tree-view-panel"
+        role="tabpanel"
+      >
+        {warnings.length > 0 ? (
+          <aside aria-live="polite" className="family-tree-warnings">
+            <strong>Controlli di coerenza</strong>
             <div>
-              <p className="text-xs uppercase tracking-[0.24em] text-[#5f6d63]">Visualizzazioni</p>
-              <h2 className="font-[family-name:var(--font-display)] text-3xl text-slate-900">
-                Scegli il modo di leggere la famiglia
-              </h2>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-3">
-              {(Object.keys(viewLabels) as AppView[]).map((currentView) => (
-                <button
-                  className={[
-                    "rounded-[24px] border px-4 py-4 text-left transition",
-                    view === currentView
-                      ? "border-[#5f8f63] bg-white text-[#153524] shadow-sm"
-                      : "border-[#d9cfbd] bg-white/60 text-slate-700 hover:border-[#5f8f63]",
-                  ].join(" ")}
-                  key={currentView}
-                  onClick={() => setView(currentView)}
-                  type="button"
-                >
-                  <span className="block text-sm font-semibold">{viewLabels[currentView].title}</span>
-                  <span className="mt-1 block text-xs leading-5 text-slate-500">
-                    {viewLabels[currentView].subtitle}
-                  </span>
-                </button>
+              {warnings.map((warning) => (
+                <span key={warning}>{warning}</span>
               ))}
             </div>
-          </div>
-        </section>
+          </aside>
+        ) : null}
 
         {view === "diagram" ? (
           <TreeDiagramView
@@ -318,7 +265,7 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
             query={deferredQuery}
           />
         ) : null}
-      </div>
+      </section>
 
       {isPersonModalOpen ? (
         <PersonModal

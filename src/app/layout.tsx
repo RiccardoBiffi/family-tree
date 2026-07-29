@@ -3,8 +3,9 @@ import "@xyflow/react/dist/style.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Family Tree Archive",
-  description: "Web app Next.js per gestire e visualizzare un albero genealogico interamente nel browser.",
+  title: "Archivio Rinaldi",
+  description:
+    "Archivio genealogico interattivo con diagramma, tabella e timeline, salvato nel browser.",
 };
 
 export default function RootLayout({

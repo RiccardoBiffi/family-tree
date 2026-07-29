@@ -1,8 +1,9 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect } from "react";
+import { useId, useRef } from "react";
 
+import { useDialogFocus } from "@/hooks/useDialogFocus";
 import type { PersonRecord } from "@/models/Person";
 import {
   formatDateLabel,
@@ -31,20 +32,9 @@ function renderPeopleList(ids: string[], peopleById: Map<string, PersonRecord>):
 }
 
 export function PersonModal({ person, peopleById, onClose, onEdit }: PersonModalProps) {
-  useEffect(() => {
-    if (!person) {
-      return;
-    }
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-
-    window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
-  }, [onClose, person]);
+  const titleId = useId();
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const dialogRef = useDialogFocus<HTMLDivElement>(Boolean(person), onClose, closeButtonRef);
 
   if (!person) {
     return null;
@@ -54,25 +44,31 @@ export function PersonModal({ person, peopleById, onClose, onEdit }: PersonModal
 
   return (
     <div
-      aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-8 backdrop-blur-sm"
-      role="dialog"
-      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[#06150d]/50 px-3 py-4 backdrop-blur-[2px] sm:px-6 sm:py-8"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
     >
       <div
-        className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-[28px] border border-white/10 bg-[#faf5eb] text-slate-900 shadow-[0_30px_120px_rgba(15,23,42,0.35)]"
-        onClick={(event) => event.stopPropagation()}
+        aria-labelledby={titleId}
+        aria-modal="true"
+        className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-[24px] border border-[#dfe5df] bg-white text-[#152219] shadow-[0_30px_100px_rgba(6,21,13,0.28)] outline-none"
+        ref={dialogRef}
+        role="dialog"
+        tabIndex={-1}
       >
-        <div className="grid gap-6 border-b border-slate-900/10 bg-[linear-gradient(140deg,#153524_0%,#1f5135_52%,#d4b26f_100%)] px-6 py-6 text-white md:grid-cols-[220px_1fr]">
-          <div className="flex min-h-56 items-end rounded-[24px] border border-white/20 bg-white/10 p-5">
+        <div className="grid gap-6 border-b border-[#dfe5df] bg-[#f4f7f3] px-5 py-5 sm:px-6 sm:py-6 md:grid-cols-[200px_1fr]">
+          <div className="flex min-h-48 items-end rounded-[20px] border border-[#cbd5cb] bg-white p-4">
             {person.photo ? (
               <img
                 alt={title}
-                className="h-full max-h-56 w-full rounded-[18px] object-cover"
+                className="h-full max-h-52 w-full rounded-[16px] object-cover"
                 src={person.photo}
               />
             ) : (
-              <div className="flex h-full min-h-44 w-full items-center justify-center rounded-[18px] border border-dashed border-white/35 bg-black/10 text-5xl font-semibold">
+              <div className="flex h-full min-h-40 w-full items-center justify-center rounded-[16px] border border-dashed border-[#b9c5b8] bg-[#edf2e9] font-[family-name:var(--font-display)] text-5xl text-[#0c3b24]">
                 {title.slice(0, 2).toUpperCase()}
               </div>
             )}
@@ -80,16 +76,21 @@ export function PersonModal({ person, peopleById, onClose, onEdit }: PersonModal
           <div className="space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <p className="text-xs uppercase tracking-[0.34em] text-white/70">Scheda persona</p>
-                <h2 className="font-[family-name:var(--font-display)] text-4xl leading-none">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#65746a]">
+                  Scheda persona
+                </p>
+                <h2
+                  className="mt-2 font-[family-name:var(--font-display)] text-4xl leading-none text-[#17351f]"
+                  id={titleId}
+                >
                   {title}
                 </h2>
-                <p className="mt-2 text-sm text-white/80">{getLifeSpanLabel(person)}</p>
+                <p className="mt-2 text-sm text-[#526158]">{getLifeSpanLabel(person)}</p>
               </div>
               <div className="flex gap-2">
                 {onEdit ? (
                   <button
-                    className="rounded-full border border-white/25 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/12"
+                    className="min-h-11 rounded-xl border border-[#b9c5b8] bg-white px-4 text-sm font-medium text-[#17351f] outline-none transition hover:border-[#78907c] focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
                     onClick={() => onEdit(person.id)}
                     type="button"
                   >
@@ -97,22 +98,22 @@ export function PersonModal({ person, peopleById, onClose, onEdit }: PersonModal
                   </button>
                 ) : null}
                 <button
-                  className="rounded-full border border-white/25 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/12"
+                  className="min-h-11 rounded-xl bg-[#0c3b24] px-4 text-sm font-semibold text-white outline-none transition hover:bg-[#164d31] focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
                   onClick={onClose}
+                  ref={closeButtonRef}
                   type="button"
                 >
                   Chiudi
                 </button>
               </div>
             </div>
-            <p className="max-w-2xl text-sm leading-6 text-white/90">
-              {person.notes ??
-                "Nessuna nota disponibile. Apri la modalita' amministratore per arricchire la scheda."}
+            <p className="max-w-2xl text-sm leading-6 text-[#34443a]">
+              {person.notes ?? "Nessuna nota disponibile."}
             </p>
             <div className="flex flex-wrap gap-2">
               {(person.tags ?? []).map((tag) => (
                 <span
-                  className="rounded-full bg-white/12 px-3 py-1 text-xs uppercase tracking-[0.2em] text-white/90"
+                  className="rounded-full border border-[#d5ddd5] bg-white px-3 py-1 text-xs font-medium text-[#526158]"
                   key={tag}
                 >
                   {tag}
@@ -123,7 +124,7 @@ export function PersonModal({ person, peopleById, onClose, onEdit }: PersonModal
         </div>
 
         <div className="grid gap-4 px-6 py-6 md:grid-cols-2">
-          <section className="rounded-[22px] border border-slate-900/10 bg-white px-5 py-5 shadow-sm">
+          <section className="rounded-[18px] border border-[#dfe5df] bg-white px-5 py-5">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Anagrafica</p>
             <dl className="mt-4 space-y-3 text-sm text-slate-700">
               <div className="flex justify-between gap-4">
@@ -159,7 +160,7 @@ export function PersonModal({ person, peopleById, onClose, onEdit }: PersonModal
             </dl>
           </section>
 
-          <section className="rounded-[22px] border border-slate-900/10 bg-white px-5 py-5 shadow-sm">
+          <section className="rounded-[18px] border border-[#dfe5df] bg-white px-5 py-5">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Relazioni</p>
             <dl className="mt-4 space-y-3 text-sm text-slate-700">
               <div>
@@ -177,7 +178,7 @@ export function PersonModal({ person, peopleById, onClose, onEdit }: PersonModal
             </dl>
           </section>
 
-          <section className="rounded-[22px] border border-slate-900/10 bg-white px-5 py-5 shadow-sm md:col-span-2">
+          <section className="rounded-[18px] border border-[#dfe5df] bg-white px-5 py-5 md:col-span-2">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Materiali e note</p>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <div>

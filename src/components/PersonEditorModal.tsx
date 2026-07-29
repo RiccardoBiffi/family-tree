@@ -3,6 +3,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
+import { useDialogFocus } from "@/hooks/useDialogFocus";
 import type { PersonRecord, PersonSex } from "@/models/Person";
 import { getPersonDisplayName, getPersonShortName } from "@/utils/familyTree";
 
@@ -16,7 +17,7 @@ interface PersonEditorModalProps {
 }
 
 const fieldClassName =
-  "w-full rounded-2xl border border-[#d9cfbd] bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#5f8f63] focus:ring-4 focus:ring-[#5f8f63]/10";
+  "min-h-11 w-full rounded-xl border border-[#cbd5cb] bg-white px-4 py-3 text-sm text-[#152219] outline-none transition focus:border-[#78907c] focus:ring-4 focus:ring-[#0c3b24]/10";
 
 function toggleId(ids: string[], id: string, nextChecked: boolean): string[] {
   if (nextChecked) {
@@ -64,16 +65,18 @@ function RelationDropdown({
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
         setIsOpen(false);
       }
     };
 
     window.addEventListener("mousedown", handlePointerDown);
-    window.addEventListener("keydown", handleEscape);
+    document.addEventListener("keydown", handleEscape, true);
 
     return () => {
       window.removeEventListener("mousedown", handlePointerDown);
-      window.removeEventListener("keydown", handleEscape);
+      document.removeEventListener("keydown", handleEscape, true);
     };
   }, [isOpen]);
 
@@ -173,21 +176,13 @@ export function PersonEditorModal({
   onSave,
 }: PersonEditorModalProps) {
   const [draft, setDraft] = useState<PersonRecord>(person);
+  const titleId = useId();
+  const firstInputRef = useRef<HTMLInputElement | null>(null);
+  const dialogRef = useDialogFocus<HTMLDivElement>(true, onClose, firstInputRef);
 
   useEffect(() => {
     setDraft(person);
   }, [person]);
-
-  useEffect(() => {
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-
-    window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
-  }, [onClose]);
 
   const availableRelations = useMemo(
     () => people.filter((candidate) => candidate.id !== draft.id),
@@ -206,25 +201,31 @@ export function PersonEditorModal({
 
   return (
     <div
-      aria-modal="true"
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 px-4 py-8 backdrop-blur-sm"
-      role="dialog"
-      onClick={onClose}
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-[#06150d]/50 px-3 py-4 backdrop-blur-[2px] sm:px-6 sm:py-8"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
     >
       <div
-        className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-[28px] border border-white/10 bg-[#faf5eb] text-slate-900 shadow-[0_30px_120px_rgba(15,23,42,0.35)]"
-        onClick={(event) => event.stopPropagation()}
+        aria-labelledby={titleId}
+        aria-modal="true"
+        className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-[24px] border border-[#dfe5df] bg-white text-[#152219] shadow-[0_30px_100px_rgba(6,21,13,0.28)] outline-none"
+        ref={dialogRef}
+        role="dialog"
+        tabIndex={-1}
       >
-        <div className="grid gap-6 border-b border-slate-900/10 bg-[linear-gradient(140deg,#153524_0%,#1f5135_52%,#d4b26f_100%)] px-6 py-6 text-white md:grid-cols-[220px_1fr]">
-          <div className="flex min-h-56 items-end rounded-[24px] border border-white/20 bg-white/10 p-5">
+        <div className="grid gap-6 border-b border-[#dfe5df] bg-[#f4f7f3] px-5 py-5 sm:px-6 sm:py-6 md:grid-cols-[200px_1fr]">
+          <div className="flex min-h-48 items-end rounded-[20px] border border-[#cbd5cb] bg-white p-4">
             {draft.photo ? (
               <img
                 alt={title}
-                className="h-full max-h-56 w-full rounded-[18px] object-cover"
+                className="h-full max-h-52 w-full rounded-[16px] object-cover"
                 src={draft.photo}
               />
             ) : (
-              <div className="flex h-full min-h-44 w-full items-center justify-center rounded-[18px] border border-dashed border-white/35 bg-black/10 text-5xl font-semibold">
+              <div className="flex h-full min-h-40 w-full items-center justify-center rounded-[16px] border border-dashed border-[#b9c5b8] bg-[#edf2e9] font-[family-name:var(--font-display)] text-5xl text-[#0c3b24]">
                 {(draft.name || title).slice(0, 2).toUpperCase()}
               </div>
             )}
@@ -232,20 +233,23 @@ export function PersonEditorModal({
           <div className="space-y-4">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <p className="text-xs uppercase tracking-[0.34em] text-white/70">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#65746a]">
                   {mode === "create" ? "Nuova persona" : "Editor scheda"}
                 </p>
-                <h2 className="font-[family-name:var(--font-display)] text-4xl leading-none">
+                <h2
+                  className="mt-2 font-[family-name:var(--font-display)] text-4xl leading-none text-[#17351f]"
+                  id={titleId}
+                >
                   {title}
                 </h2>
-                <p className="mt-2 text-sm text-white/80">
+                <p className="mt-2 text-sm text-[#526158]">
                   Usa la stessa struttura della scheda persona e salva quando i dati sono coerenti.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 {mode === "edit" && draft.id && onDelete ? (
                   <button
-                    className="rounded-full border border-[#f3b8b8]/60 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/12"
+                    className="min-h-11 rounded-xl border border-[#d8a5a5] bg-white px-4 text-sm font-medium text-[#8b3030] outline-none transition hover:border-[#b86c6c] focus-visible:ring-2 focus-visible:ring-[#8b3030] focus-visible:ring-offset-2"
                     onClick={() => onDelete(draft.id)}
                     type="button"
                   >
@@ -253,7 +257,7 @@ export function PersonEditorModal({
                   </button>
                 ) : null}
                 <button
-                  className="rounded-full border border-white/25 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/12"
+                  className="min-h-11 rounded-xl border border-[#b9c5b8] bg-white px-4 text-sm font-medium text-[#17351f] outline-none transition hover:border-[#78907c] focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
                   onClick={onClose}
                   type="button"
                 >
@@ -261,7 +265,7 @@ export function PersonEditorModal({
                 </button>
               </div>
             </div>
-            <p className="max-w-2xl text-sm leading-6 text-white/90">
+            <p className="max-w-2xl text-sm leading-6 text-[#34443a]">
               Le relazioni si selezionano da dropdown con ricerca integrata, per evitare liste lunghe e poco leggibili.
             </p>
           </div>
@@ -274,7 +278,7 @@ export function PersonEditorModal({
             onSave(draft);
           }}
         >
-          <section className="rounded-[22px] border border-slate-900/10 bg-white px-5 py-5 shadow-sm">
+          <section className="rounded-[18px] border border-[#dfe5df] bg-white px-5 py-5">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Anagrafica</p>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <label className="space-y-2">
@@ -283,6 +287,7 @@ export function PersonEditorModal({
                   className={fieldClassName}
                   onChange={(event) => updateDraft("name", event.target.value)}
                   placeholder="Mario"
+                  ref={firstInputRef}
                   required
                   value={draft.name}
                 />
@@ -372,7 +377,7 @@ export function PersonEditorModal({
             </div>
           </section>
 
-          <section className="rounded-[22px] border border-slate-900/10 bg-white px-5 py-5 shadow-sm">
+          <section className="rounded-[18px] border border-[#dfe5df] bg-white px-5 py-5">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Relazioni</p>
             <div className="mt-4 space-y-4">
               <RelationDropdown
@@ -396,7 +401,7 @@ export function PersonEditorModal({
             </div>
           </section>
 
-          <section className="rounded-[22px] border border-slate-900/10 bg-white px-5 py-5 shadow-sm md:col-span-2">
+          <section className="rounded-[18px] border border-[#dfe5df] bg-white px-5 py-5 md:col-span-2">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Materiali e note</p>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <label className="space-y-2">
@@ -449,14 +454,14 @@ export function PersonEditorModal({
 
           <div className="flex flex-wrap justify-end gap-3 md:col-span-2">
             <button
-              className="rounded-full border border-[#d9cfbd] bg-white px-5 py-3 text-sm font-medium text-slate-700 transition hover:border-[#5f8f63] hover:text-[#153524]"
+              className="min-h-11 rounded-xl border border-[#cbd5cb] bg-white px-5 text-sm font-medium text-[#34443a] outline-none transition hover:border-[#78907c] focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
               onClick={onClose}
               type="button"
             >
               Annulla
             </button>
             <button
-              className="rounded-full bg-[#153524] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#204b33]"
+              className="min-h-11 rounded-xl bg-[#0c3b24] px-5 text-sm font-semibold text-white outline-none transition hover:bg-[#164d31] focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
               type="submit"
             >
               {mode === "create" ? "Crea persona" : "Salva modifiche"}

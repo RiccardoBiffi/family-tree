@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
-import { vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@xyflow/react", async () => {
   return {
@@ -47,26 +47,44 @@ import { FamilyTreeApp } from "@/components/FamilyTreeApp";
 import { FAMILY_TREE_STORAGE_KEY } from "@/models/FamilyTree";
 
 describe("FamilyTreeApp", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
   it("renders the seeded archive, opens person details, and switches views", async () => {
     const user = userEvent.setup();
     const currentYear = new Date().getUTCFullYear();
 
     render(<FamilyTreeApp mode="visitor" />);
 
-    expect(await screen.findByText("Archivio della famiglia Rinaldi")).toBeInTheDocument();
+    expect(await screen.findByText("Archivio Rinaldi")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Diagramma" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
 
     await user.click(screen.getByRole("button", { name: /Nanni/i }));
-    const personDialog = await screen.findByRole("dialog");
+    const personDialog = await screen.findByRole("dialog", { name: /Giovanni Rinaldi/i });
     expect(personDialog).toBeInTheDocument();
     expect(within(personDialog).getByText(/Scheda persona/i)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Chiudi" }));
 
-    await user.click(screen.getByRole("button", { name: /^Tabella/i }));
-    expect(await screen.findByText(/Elenco ordinabile e filtrabile/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Tabella" }));
+    expect(
+      await screen.findByRole("region", { name: "Tabella delle persone" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Tabella" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
 
-    await user.click(screen.getByRole("button", { name: /^Timeline/i }));
-    expect(await screen.findByText(/Cronologia di nascite e decessi/i)).toBeInTheDocument();
-    expect(screen.getByText(new RegExp(`Intervallo 1943 - ${currentYear}`))).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: "Timeline" }));
+    expect(
+      await screen.findByText(/Cronologia di nascite e decessi/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(new RegExp(`Intervallo 1943 - ${currentYear}`)),
+    ).toBeInTheDocument();
   });
 
   it("allows admin mode to add a person and reveal hidden table columns", async () => {
@@ -74,7 +92,7 @@ describe("FamilyTreeApp", () => {
 
     render(<FamilyTreeApp mode="admin" />);
 
-    expect(await screen.findByText("Archivio della famiglia Rinaldi")).toBeInTheDocument();
+    expect(await screen.findByText("Archivio Rinaldi")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Nuova persona" }));
 
@@ -95,26 +113,27 @@ describe("FamilyTreeApp", () => {
     expect(within(personDialog).getByText(/Nanni/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Chiudi" }));
-    await user.type(screen.getByLabelText("Ricerca trasversale"), "Giulia");
-    await user.click(screen.getByRole("button", { name: /^Tabella/i }));
+    await user.type(screen.getByLabelText("Cerca una persona"), "Giulia");
+    await user.click(screen.getByRole("tab", { name: "Tabella" }));
 
-    const tableTitle = await screen.findByText(/Elenco ordinabile e filtrabile/i);
-    const tableSection = tableTitle.closest("section");
-
-    expect(tableSection).not.toBeNull();
-    expect(within(tableSection as HTMLElement).getByText(/Giulia Verdi/i)).toBeInTheDocument();
-
-    const birthPlaceToggle = within(tableSection as HTMLElement).getByRole("checkbox", {
-      name: "Luogo di nascita",
+    const tableSection = await screen.findByRole("region", {
+      name: "Tabella delle persone",
     });
-    await user.click(birthPlaceToggle);
+    expect(within(tableSection).getByText(/Giulia Verdi/i)).toBeInTheDocument();
+    expect(within(tableSection).getAllByText("Milano").length).toBeGreaterThan(0);
+
+    await user.click(within(tableSection).getByText("Colonne"));
+    const deathDateToggle = within(tableSection).getByRole("checkbox", {
+      name: "Decesso",
+    });
+    expect(deathDateToggle).not.toBeChecked();
+    await user.click(deathDateToggle);
 
     expect(
-      await within(tableSection as HTMLElement).findByRole("columnheader", {
-        name: /Luogo di nascita/i,
+      await within(tableSection).findByRole("columnheader", {
+        name: /Decesso/i,
       }),
     ).toBeInTheDocument();
-    expect(within(tableSection as HTMLElement).getAllByText("Milano").length).toBeGreaterThan(0);
   });
 
   it("opens the editor from the person card with the current values pre-filled", async () => {
@@ -122,7 +141,7 @@ describe("FamilyTreeApp", () => {
 
     render(<FamilyTreeApp mode="admin" />);
 
-    expect(await screen.findByText("Archivio della famiglia Rinaldi")).toBeInTheDocument();
+    expect(await screen.findByText("Archivio Rinaldi")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Nanni/i }));
 
@@ -146,5 +165,21 @@ describe("FamilyTreeApp", () => {
 
     const updatedDialog = await screen.findByRole("dialog");
     expect(within(updatedDialog).getByText(/Restauratore/i)).toBeInTheDocument();
+  });
+
+  it("keeps access mode out of the visible UI while preserving admin actions", async () => {
+    const { unmount } = render(<FamilyTreeApp mode="visitor" />);
+
+    expect(await screen.findByText("Archivio Rinaldi")).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.queryByText(/sola lettura|visitatore|amministrazione/i)).not.toBeInTheDocument();
+
+    unmount();
+    render(<FamilyTreeApp mode="admin" />);
+
+    expect(await screen.findByRole("button", { name: "Nuova persona" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ripristina demo" })).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.queryByText(/visitatore|modalità admin|amministrazione/i)).not.toBeInTheDocument();
   });
 });
