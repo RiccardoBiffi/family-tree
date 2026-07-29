@@ -44,11 +44,75 @@ vi.mock("@xyflow/react", async () => {
 });
 
 import { FamilyTreeApp } from "@/components/FamilyTreeApp";
+import { seedFamilyTree } from "@/data/seedFamilyTree";
 import { FAMILY_TREE_STORAGE_KEY } from "@/models/FamilyTree";
 
 describe("FamilyTreeApp", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    window.localStorage.setItem(
+      FAMILY_TREE_STORAGE_KEY,
+      JSON.stringify(seedFamilyTree),
+    );
+  });
+
+  it("onboards a browser without a snapshot and preserves the family name after reload", async () => {
+    window.localStorage.clear();
+    const user = userEvent.setup();
+    const { unmount } = render(<FamilyTreeApp mode="admin" />);
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "Crea il tuo archivio di famiglia",
+      }),
+    ).toBeInTheDocument();
+    expect(window.localStorage.getItem(FAMILY_TREE_STORAGE_KEY)).toBeNull();
+
+    await user.type(screen.getByLabelText("Nome della famiglia"), "Bianchi");
+    await user.click(screen.getByRole("button", { name: "Crea l'archivio" }));
+
+    expect(await screen.findByText("Archivio Bianchi")).toBeInTheDocument();
+
+    const storedSnapshot = JSON.parse(
+      window.localStorage.getItem(FAMILY_TREE_STORAGE_KEY) ?? "null",
+    );
+    expect(storedSnapshot.metadata.familyName).toBe("Bianchi");
+    expect(storedSnapshot.metadata.title).toBe("Archivio della famiglia Bianchi");
+    expect(storedSnapshot.people).toEqual([]);
+
+    unmount();
+    render(<FamilyTreeApp mode="admin" />);
+
+    expect(await screen.findByText("Archivio Bianchi")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", {
+        name: "Crea il tuo archivio di famiglia",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("treats a stored archive with no people as initialized", async () => {
+    window.localStorage.setItem(
+      FAMILY_TREE_STORAGE_KEY,
+      JSON.stringify({
+        ...seedFamilyTree,
+        metadata: {
+          ...seedFamilyTree.metadata,
+          title: "Archivio della famiglia Verdi",
+          familyName: "Verdi",
+        },
+        people: [],
+      }),
+    );
+
+    render(<FamilyTreeApp mode="admin" />);
+
+    expect(await screen.findByText("Archivio Verdi")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", {
+        name: "Crea il tuo archivio di famiglia",
+      }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders the seeded archive, opens person details, and switches views", async () => {

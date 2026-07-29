@@ -39,6 +39,10 @@ function upsertReference(collection: string[], id: string): string[] {
   return collection.includes(id) ? collection : [...collection, id];
 }
 
+function removeReference(collection: string[], id: string): string[] {
+  return collection.filter((currentId) => currentId !== id);
+}
+
 function sortPeople(people: PersonRecord[]): PersonRecord[] {
   return [...people].sort((left, right) => {
     const leftDate = left.birthDate ?? "9999-12-31";
@@ -50,6 +54,74 @@ function sortPeople(people: PersonRecord[]): PersonRecord[] {
 
     return getPersonDisplayName(left).localeCompare(getPersonDisplayName(right));
   });
+}
+
+export function reconcilePersonRelationships(
+  currentPeople: PersonRecord[],
+  nextPerson: PersonRecord,
+): PersonRecord[] {
+  const validIds = new Set([
+    ...currentPeople.map((person) => person.id),
+    nextPerson.id,
+  ]);
+  const parentIds = cleanReferenceList(
+    nextPerson.id,
+    nextPerson.parentIds,
+    validIds,
+  );
+  const childIds = cleanReferenceList(
+    nextPerson.id,
+    nextPerson.childIds,
+    validIds,
+  );
+  const partnerIds = cleanReferenceList(
+    nextPerson.id,
+    nextPerson.partnerIds,
+    validIds,
+  );
+  const parentIdSet = new Set(parentIds);
+  const childIdSet = new Set(childIds);
+  const partnerIdSet = new Set(partnerIds);
+
+  const reconciledPeople = currentPeople
+    .filter((person) => person.id !== nextPerson.id)
+    .map((person) => {
+      const parentIdsForPerson = removeReference(
+        person.parentIds,
+        nextPerson.id,
+      );
+      const childIdsForPerson = removeReference(
+        person.childIds,
+        nextPerson.id,
+      );
+      const partnerIdsForPerson = removeReference(
+        person.partnerIds,
+        nextPerson.id,
+      );
+
+      return {
+        ...person,
+        parentIds: childIdSet.has(person.id)
+          ? upsertReference(parentIdsForPerson, nextPerson.id)
+          : parentIdsForPerson,
+        childIds: parentIdSet.has(person.id)
+          ? upsertReference(childIdsForPerson, nextPerson.id)
+          : childIdsForPerson,
+        partnerIds: partnerIdSet.has(person.id)
+          ? upsertReference(partnerIdsForPerson, nextPerson.id)
+          : partnerIdsForPerson,
+      };
+    });
+
+  return [
+    ...reconciledPeople,
+    {
+      ...nextPerson,
+      parentIds,
+      childIds,
+      partnerIds,
+    },
+  ];
 }
 
 export function normalizeFamilyTree(

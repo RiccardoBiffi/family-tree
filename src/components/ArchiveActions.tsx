@@ -39,13 +39,23 @@ export function ArchiveActions({
 
       {isAdmin ? (
         <div aria-label="Azioni archivio" className="archive-admin-toolbar" role="toolbar">
-          <button onClick={onCreatePerson} type="button">
+          <button
+            aria-label="Nuova persona"
+            onClick={onCreatePerson}
+            title="Nuova persona"
+            type="button"
+          >
             <ArchiveIcon className="archive-action-icon" name="plus" />
-            <span>Nuova persona</span>
+            <span className="sr-only">Nuova persona</span>
           </button>
-          <button onClick={onResetDemoData} type="button">
+          <button
+            aria-label="Ripristina demo"
+            onClick={onResetDemoData}
+            title="Ripristina demo"
+            type="button"
+          >
             <ArchiveIcon className="archive-action-icon" name="reset" />
-            <span>Ripristina demo</span>
+            <span className="sr-only">Ripristina demo</span>
           </button>
         </div>
       ) : null}

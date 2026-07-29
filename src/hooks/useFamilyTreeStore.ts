@@ -4,19 +4,25 @@ import { useEffect, useRef, useState } from "react";
 
 import type { FamilyTreeSnapshot } from "@/models/FamilyTree";
 import type { PersonRecord } from "@/models/Person";
-import { normalizeFamilyTree } from "@/utils/familyTree";
+import {
+  normalizeFamilyTree,
+  reconcilePersonRelationships,
+} from "@/utils/familyTree";
 import { LocalStorageDB } from "@/utils/localStorageDB";
 
 export function useFamilyTreeStore() {
   const dbRef = useRef<LocalStorageDB | null>(null);
   const [snapshot, setSnapshot] = useState<FamilyTreeSnapshot | null>(null);
+  const [needsArchiveSetup, setNeedsArchiveSetup] = useState(false);
 
   if (!dbRef.current) {
     dbRef.current = new LocalStorageDB();
   }
 
   useEffect(() => {
-    setSnapshot(dbRef.current?.load() ?? null);
+    const loaded = dbRef.current?.loadWithStatus();
+    setSnapshot(loaded?.snapshot ?? null);
+    setNeedsArchiveSetup(loaded?.status === "missing");
   }, []);
 
   const persistSnapshot = (nextSnapshot: FamilyTreeSnapshot) => {
@@ -37,8 +43,7 @@ export function useFamilyTreeStore() {
       updatedAt: new Date().toISOString(),
     };
 
-    const otherPeople = snapshot.people.filter((person) => person.id !== draft.id);
-    const people = draft.id ? [...otherPeople, nextPerson] : [...otherPeople, nextPerson];
+    const people = reconcilePersonRelationships(snapshot.people, nextPerson);
 
     return persistSnapshot({
       ...snapshot,
@@ -57,16 +62,42 @@ export function useFamilyTreeStore() {
     });
   };
 
-  const replaceSnapshot = (nextSnapshot: FamilyTreeSnapshot) => persistSnapshot(nextSnapshot);
+  const initializeArchive = (familyName: string) => {
+    const normalizedFamilyName = familyName.trim();
+
+    if (!snapshot || !needsArchiveSetup || !normalizedFamilyName) {
+      return null;
+    }
+
+    const saved = persistSnapshot({
+      ...snapshot,
+      metadata: {
+        ...snapshot.metadata,
+        title: `Archivio della famiglia ${normalizedFamilyName}`,
+        familyName: normalizedFamilyName,
+      },
+    });
+    setNeedsArchiveSetup(false);
+    return saved;
+  };
+
+  const replaceSnapshot = (nextSnapshot: FamilyTreeSnapshot) => {
+    const saved = persistSnapshot(nextSnapshot);
+    setNeedsArchiveSetup(false);
+    return saved;
+  };
   const resetDemoData = () => {
     const seeded = dbRef.current?.reset() ?? null;
     setSnapshot(seeded);
+    setNeedsArchiveSetup(false);
     return seeded;
   };
 
   return {
     snapshot,
     isLoaded: snapshot !== null,
+    needsArchiveSetup,
+    initializeArchive,
     replaceSnapshot,
     upsertPerson,
     deletePerson,

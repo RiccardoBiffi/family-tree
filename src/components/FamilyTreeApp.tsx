@@ -4,6 +4,7 @@ import { useDeferredValue, useEffect, useMemo, useState } from "react";
 
 import { ArchiveActions } from "@/components/ArchiveActions";
 import { ArchiveIcon } from "@/components/ArchiveIcon";
+import { ArchiveOnboarding } from "@/components/ArchiveOnboarding";
 import { PeopleTable } from "@/components/PeopleTable";
 import { PersonEditorModal } from "@/components/PersonEditorModal";
 import { PersonModal } from "@/components/PersonModal";
@@ -61,7 +62,15 @@ function formatArchiveDate(value: string) {
 }
 
 export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
-  const { snapshot, isLoaded, upsertPerson, deletePerson, resetDemoData } = useFamilyTreeStore();
+  const {
+    snapshot,
+    isLoaded,
+    needsArchiveSetup,
+    initializeArchive,
+    upsertPerson,
+    deletePerson,
+    resetDemoData,
+  } = useFamilyTreeStore();
   const [view, setView] = useState<AppView>("diagram");
   const [query, setQuery] = useState("");
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
@@ -121,6 +130,10 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
         <p>Sto preparando l&apos;archivio</p>
       </main>
     );
+  }
+
+  if (needsArchiveSetup) {
+    return <ArchiveOnboarding onSubmit={initializeArchive} />;
   }
 
   const archiveTitle = getArchiveTitle(
@@ -253,6 +266,7 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
             onSelectPerson={handleSelectPerson}
             people={snapshot.people}
             query={deferredQuery}
+            selectedPersonId={selectedPersonId}
           />
         ) : null}
         {view === "table" ? (

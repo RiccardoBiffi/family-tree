@@ -35,6 +35,16 @@ const rounds = [
     status: "Passed",
     finding: "Desktop/mobile browser flows, 44px targets, focus behavior, axe, lint, tests, types, and build pass.",
   },
+  {
+    name: "Browser feedback round 4",
+    status: "Critiqued",
+    finding: "Nine annotated UI gaps plus relationship persistence and first-run setup were tested independently.",
+  },
+  {
+    name: "Repair round 5",
+    status: "Passed",
+    finding: "Real-browser save/reload, all-column reordering, sticky editor, dirty-close guard, onboarding, and 2px selection pass.",
+  },
 ];
 
 const goldReferences = [
@@ -101,10 +111,10 @@ export default function ProgressPage() {
               Current status
             </h2>
             <span className="rounded-full bg-[#fff0d8] px-3 py-1.5 text-xs font-semibold text-[#8b5b12]">
-              Candidate wins · 3/3 critics
+              Candidate wins · all fresh critics
             </span>
           </div>
-          <div className="mt-4 grid gap-px overflow-hidden rounded-2xl border border-[#cbd5cb] bg-[#cbd5cb] md:grid-cols-2 xl:grid-cols-5">
+          <div className="mt-4 grid gap-px overflow-hidden rounded-2xl border border-[#cbd5cb] bg-[#cbd5cb] md:grid-cols-2 xl:grid-cols-4">
             {rounds.map((round) => (
               <article className="bg-white p-5" key={round.name}>
                 <div className="flex items-center justify-between gap-4">
@@ -195,7 +205,8 @@ export default function ProgressPage() {
             </div>
           </div>
           <p className="mt-4 text-sm leading-6 text-[#526158]">
-            Largest critic gaps closed: diagram framing and timeline density. Remaining intentional
+            Largest critic gaps closed: diagram framing, timeline density, relationship removal
+            after reload, all-column reordering, and editor close protection. Remaining intentional
             delta: the gold mobile concepts use a taller canvas; the product keeps the 390×844 page
             contained and gives the visualization its own pan/scroll surface.
           </p>
@@ -205,7 +216,19 @@ export default function ProgressPage() {
           <h2 className="text-lg font-semibold" id="latest-heading">
             Latest exact-size renders
           </h2>
-          <div className="mt-4 grid gap-5 lg:grid-cols-2">
+          <div className="mt-4 grid gap-5 lg:grid-cols-3">
+            <figure className="overflow-hidden rounded-2xl border border-[#cbd5cb] bg-white">
+              <figcaption className="border-b border-[#dfe5df] px-4 py-3 text-sm font-semibold">
+                Tabella · 1440×900
+              </figcaption>
+              <Image
+                alt="Latest browser-tested Tabella desktop render"
+                className="h-auto w-full"
+                height={900}
+                src="/qa/latest-table-desktop.png"
+                width={1440}
+              />
+            </figure>
             <figure className="overflow-hidden rounded-2xl border border-[#cbd5cb] bg-white">
               <figcaption className="border-b border-[#dfe5df] px-4 py-3 text-sm font-semibold">
                 Timeline · 1440×900

@@ -20,6 +20,20 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Stato locale e “senza dati”
+
+L’app considera un avvio **senza dati** soltanto quando nel browser non esiste
+la chiave `family-tree.snapshot.v1`. In quel caso mostra la configurazione
+iniziale e salva un archivio vuoto con il nome della famiglia inserito.
+
+Un archivio già salvato con `people: []` è invece un archivio valido e
+inizializzato: al ricaricamento non viene mostrata di nuovo la configurazione.
+Gli snapshot v1 esistenti continuano a essere letti con la stessa chiave e lo
+stesso schema, perché `familyName` era già parte dei metadati. Un payload non
+decodificabile mantiene il comportamento di recupero precedente caricando i
+dati demo Rinaldi; in modalità amministratore, **Ripristina demo** continua a
+sostituire esplicitamente l’archivio corrente con gli stessi dati di esempio.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

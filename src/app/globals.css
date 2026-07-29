@@ -70,6 +70,122 @@ textarea {
   color: #657269;
 }
 
+.archive-onboarding {
+  display: grid;
+  min-height: 100vh;
+  min-height: 100dvh;
+  place-items: center;
+  overflow-y: auto;
+  background:
+    radial-gradient(circle at 80% 12%, rgb(216 187 123 / 24%), transparent 30%),
+    #f5f2e9;
+  padding: clamp(24px, 7vw, 96px);
+}
+
+.archive-onboarding__card {
+  width: min(620px, 100%);
+  border: 1px solid #d8d5c9;
+  border-radius: 24px;
+  background: rgb(255 255 255 / 92%);
+  padding: clamp(28px, 5vw, 56px);
+  box-shadow: 0 24px 70px rgb(41 53 45 / 10%);
+}
+
+.archive-onboarding__eyebrow {
+  margin: 0 0 14px;
+  color: #536159;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.archive-onboarding h1 {
+  margin: 0;
+  color: #0d3a23;
+  font-family: var(--font-display);
+  font-size: clamp(2.25rem, 6vw, 3.5rem);
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1.02;
+}
+
+.archive-onboarding__intro {
+  max-width: 52ch;
+  margin: 22px 0 0;
+  color: #46544b;
+  font-size: 1rem;
+  line-height: 1.65;
+}
+
+.archive-onboarding__form {
+  display: flex;
+  margin-top: 34px;
+  flex-direction: column;
+}
+
+.archive-onboarding__form label {
+  color: #18261d;
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.archive-onboarding__hint {
+  margin: 7px 0 14px;
+  color: #657269;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.archive-onboarding__form input {
+  width: 100%;
+  min-height: 54px;
+  border: 1px solid #bac6bd;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 0 15px;
+  color: #152019;
+  outline: 0;
+}
+
+.archive-onboarding__form input:focus {
+  border-color: #54705e;
+  box-shadow: 0 0 0 3px rgb(12 59 36 / 12%);
+}
+
+.archive-onboarding__form input[aria-invalid="true"] {
+  border-color: #a34848;
+}
+
+.archive-onboarding__error {
+  margin: 8px 0 0;
+  color: #8b3434;
+  font-size: 0.8125rem;
+}
+
+.archive-onboarding__form button {
+  min-height: 52px;
+  margin-top: 20px;
+  border: 1px solid #0c3b24;
+  border-radius: 10px;
+  background: #0c3b24;
+  padding: 0 20px;
+  color: #ffffff;
+  font-weight: 700;
+  transition:
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.archive-onboarding__form button:hover {
+  background: #164b30;
+}
+
+.archive-onboarding__form button:focus-visible {
+  outline: 3px solid rgb(12 59 36 / 30%);
+  outline-offset: 3px;
+}
+
 .archive-shell-header {
   position: relative;
   z-index: 10;
@@ -78,10 +194,10 @@ textarea {
   grid-template-areas: "identity actions tabs";
   grid-template-columns: minmax(270px, 0.75fr) minmax(330px, 1.15fr) auto;
   align-items: center;
-  gap: 24px 32px;
+  gap: 20px 28px;
   border-bottom: 1px solid #dfe5df;
   background: #ffffff;
-  padding: 28px clamp(24px, 2.6vw, 42px);
+  padding: 20px clamp(24px, 2.6vw, 42px);
 }
 
 .archive-identity {
@@ -169,11 +285,11 @@ textarea {
   min-height: 44px;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  width: 44px;
   border: 1px solid #d5ddd6;
   border-radius: 10px;
   background: #ffffff;
-  padding: 0 12px;
+  padding: 0;
   color: #26372c;
   font-size: 0.8125rem;
   font-weight: 650;
@@ -323,18 +439,33 @@ textarea {
 
 @media (min-width: 1280px) and (max-width: 1399px) {
   .archive-actions--admin {
-    align-items: stretch;
-    flex-direction: column;
+    align-items: center;
+    flex-direction: row;
   }
 
   .archive-actions--admin .archive-search {
-    width: 100%;
-    min-height: 48px;
-    flex: 0 0 auto;
+    width: auto;
+    min-height: 52px;
+    flex: 1 1 260px;
   }
 }
 
 @media (max-width: 767px) {
+  .archive-onboarding {
+    align-items: start;
+    padding: 18px;
+  }
+
+  .archive-onboarding__card {
+    margin-block: auto;
+    border-radius: 18px;
+    padding: 28px 22px;
+  }
+
+  .archive-onboarding__form {
+    margin-top: 26px;
+  }
+
   .archive-shell-header {
     grid-template-areas:
       "identity"
@@ -356,7 +487,7 @@ textarea {
 
   .archive-actions {
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .archive-search {
@@ -375,14 +506,11 @@ textarea {
   }
 
   .archive-admin-toolbar {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    display: flex;
   }
 
   .archive-admin-toolbar button {
-    min-width: 0;
-    padding-inline: 8px;
-    font-size: 0.75rem;
+    min-width: 44px;
   }
 
   .archive-view-tabs {

@@ -27,6 +27,7 @@ import {
 interface TreeDiagramViewProps {
   people: PersonRecord[];
   query: string;
+  selectedPersonId: string | null;
   onSelectPerson: (personId: string) => void;
 }
 
@@ -236,6 +237,7 @@ function buildPersonAriaLabel(person: PersonRecord): string {
 function buildTreeNodes(
   people: PersonRecord[],
   query: string,
+  selectedPersonId: string | null,
   onSelectPerson: (personId: string) => void,
   layout: DiagramLayout,
 ) {
@@ -295,6 +297,7 @@ function buildTreeNodes(
             photo: person.photo,
             profession: person.profession,
             secondaryLabel: getLifeSpanLabel(person).replace(" - ", "–"),
+            selected: selectedPersonId === person.id,
             sex: person.sex,
           } satisfies FamilyTreeNodeData,
           ariaLabel: buildPersonAriaLabel(person),
@@ -493,7 +496,12 @@ function buildTreeEdges(
   return edges;
 }
 
-export function TreeDiagramView({ people, query, onSelectPerson }: TreeDiagramViewProps) {
+export function TreeDiagramView({
+  people,
+  query,
+  selectedPersonId,
+  onSelectPerson,
+}: TreeDiagramViewProps) {
   const [isCompactLayout, setIsCompactLayout] = useState(false);
   const layout = isCompactLayout ? COMPACT_LAYOUT : WIDE_LAYOUT;
 
@@ -513,14 +521,20 @@ export function TreeDiagramView({ people, query, onSelectPerson }: TreeDiagramVi
       nodes: nextNodes,
       positionById,
       unionsByPartnerKey,
-    } = buildTreeNodes(people, query, onSelectPerson, layout);
+    } = buildTreeNodes(
+      people,
+      query,
+      selectedPersonId,
+      onSelectPerson,
+      layout,
+    );
 
     return {
       nodes: nextNodes,
       edges: buildTreeEdges(people, positionById, unionsByPartnerKey),
       totalGenerations: new Set(generations.values()).size,
     };
-  }, [layout, onSelectPerson, people, query]);
+  }, [layout, onSelectPerson, people, query, selectedPersonId]);
 
   const fitViewPadding = isCompactLayout
     ? {

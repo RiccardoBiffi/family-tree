@@ -17,6 +17,7 @@ export interface FamilyTreeNodeData extends Record<string, unknown> {
   photo: string | null;
   profession: string | null;
   secondaryLabel: string;
+  selected: boolean;
   sex: PersonSex;
 }
 
@@ -94,11 +95,14 @@ export function FamilyTreeNode({ data }: NodeProps) {
             ? "flex-col items-center justify-center gap-1 px-1.5 py-1.5 text-center"
             : "items-center gap-3 px-3 py-2.5 text-left",
           "transition-[border-color,box-shadow,background-color] hover:border-[#6d8d76] hover:bg-[#fdfefb] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[#17452d]/35 motion-reduce:transition-none",
-          nodeData.highlighted
-            ? "border-[#c8791a] bg-[#fffaf0] shadow-[0_0_0_3px_rgba(200,121,26,0.18),0_8px_22px_rgba(20,53,36,0.1)]"
+          nodeData.selected
+            ? "border-2 border-[#17452d] bg-[#f1f6ef] shadow-[0_0_0_3px_rgba(23,69,45,0.18),0_8px_22px_rgba(20,53,36,0.1)]"
+            : nodeData.highlighted
+            ? "border-2 border-[#c8791a] bg-[#fffaf0] shadow-[0_0_0_3px_rgba(200,121,26,0.18),0_8px_22px_rgba(20,53,36,0.1)]"
             : "border-[#315a40]",
         ].join(" ")}
         data-query-match={nodeData.highlighted ? "true" : undefined}
+        data-selected={nodeData.selected ? "true" : undefined}
         onClick={(event) => {
           event.stopPropagation();
           nodeData.onSelect();

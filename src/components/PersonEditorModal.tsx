@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { useDialogFocus } from "@/hooks/useDialogFocus";
 import type { PersonRecord, PersonSex } from "@/models/Person";
@@ -177,12 +177,30 @@ export function PersonEditorModal({
 }: PersonEditorModalProps) {
   const [draft, setDraft] = useState<PersonRecord>(person);
   const titleId = useId();
+  const formId = useId();
   const firstInputRef = useRef<HTMLInputElement | null>(null);
-  const dialogRef = useDialogFocus<HTMLDivElement>(true, onClose, firstInputRef);
 
   useEffect(() => {
     setDraft(person);
   }, [person]);
+
+  const hasUnsavedChanges = useMemo(
+    () => JSON.stringify(draft) !== JSON.stringify(person),
+    [draft, person],
+  );
+  const requestClose = useCallback(() => {
+    if (
+      hasUnsavedChanges &&
+      !window.confirm(
+        "Hai modifiche non salvate. Vuoi chiudere e perdere i dati inseriti?",
+      )
+    ) {
+      return;
+    }
+
+    onClose();
+  }, [hasUnsavedChanges, onClose]);
+  const dialogRef = useDialogFocus<HTMLDivElement>(true, requestClose, firstInputRef);
 
   const availableRelations = useMemo(
     () => people.filter((candidate) => candidate.id !== draft.id),
@@ -204,7 +222,7 @@ export function PersonEditorModal({
       className="fixed inset-0 z-[60] flex items-center justify-center bg-[#06150d]/50 px-3 py-4 backdrop-blur-[2px] sm:px-6 sm:py-8"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
-          onClose();
+          requestClose();
         }
       }}
     >
@@ -216,40 +234,40 @@ export function PersonEditorModal({
         role="dialog"
         tabIndex={-1}
       >
-        <div className="grid gap-6 border-b border-[#dfe5df] bg-[#f4f7f3] px-5 py-5 sm:px-6 sm:py-6 md:grid-cols-[200px_1fr]">
-          <div className="flex min-h-48 items-end rounded-[20px] border border-[#cbd5cb] bg-white p-4">
+        <div className="sticky top-0 z-30 grid grid-cols-[72px_minmax(0,1fr)] gap-3 border-b border-[#dfe5df] bg-[#f4f7f3]/[0.98] px-4 py-4 shadow-[0_8px_24px_rgba(12,59,36,0.06)] backdrop-blur sm:px-5 md:grid-cols-[132px_minmax(0,1fr)] md:gap-5 md:px-6">
+          <div className="flex min-h-20 items-end rounded-[16px] border border-[#cbd5cb] bg-white p-2 md:min-h-32 md:p-3">
             {draft.photo ? (
               <img
                 alt={title}
-                className="h-full max-h-52 w-full rounded-[16px] object-cover"
+                className="h-full max-h-32 w-full rounded-[12px] object-cover"
                 src={draft.photo}
               />
             ) : (
-              <div className="flex h-full min-h-40 w-full items-center justify-center rounded-[16px] border border-dashed border-[#b9c5b8] bg-[#edf2e9] font-[family-name:var(--font-display)] text-5xl text-[#0c3b24]">
+              <div className="flex h-full min-h-16 w-full items-center justify-center rounded-[12px] border border-dashed border-[#b9c5b8] bg-[#edf2e9] font-[family-name:var(--font-display)] text-2xl text-[#0c3b24] md:min-h-28 md:text-4xl">
                 {(draft.name || title).slice(0, 2).toUpperCase()}
               </div>
             )}
           </div>
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
+          <div className="min-w-0 space-y-3">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#65746a]">
                   {mode === "create" ? "Nuova persona" : "Editor scheda"}
                 </p>
                 <h2
-                  className="mt-2 font-[family-name:var(--font-display)] text-4xl leading-none text-[#17351f]"
+                  className="mt-1 line-clamp-2 font-[family-name:var(--font-display)] text-2xl leading-tight text-[#17351f] md:text-3xl"
                   id={titleId}
                 >
                   {title}
                 </h2>
-                <p className="mt-2 text-sm text-[#526158]">
+                <p className="mt-1 hidden text-sm text-[#526158] sm:block">
                   Usa la stessa struttura della scheda persona e salva quando i dati sono coerenti.
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 md:justify-end">
                 {mode === "edit" && draft.id && onDelete ? (
                   <button
-                    className="min-h-11 rounded-xl border border-[#d8a5a5] bg-white px-4 text-sm font-medium text-[#8b3030] outline-none transition hover:border-[#b86c6c] focus-visible:ring-2 focus-visible:ring-[#8b3030] focus-visible:ring-offset-2"
+                    className="min-h-11 rounded-xl border border-[#d8a5a5] bg-white px-3 text-sm font-medium text-[#8b3030] outline-none transition hover:border-[#b86c6c] focus-visible:ring-2 focus-visible:ring-[#8b3030] focus-visible:ring-offset-2"
                     onClick={() => onDelete(draft.id)}
                     type="button"
                   >
@@ -257,15 +275,22 @@ export function PersonEditorModal({
                   </button>
                 ) : null}
                 <button
-                  className="min-h-11 rounded-xl border border-[#b9c5b8] bg-white px-4 text-sm font-medium text-[#17351f] outline-none transition hover:border-[#78907c] focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
-                  onClick={onClose}
+                  className="min-h-11 rounded-xl bg-[#0c3b24] px-4 text-sm font-semibold text-white outline-none transition hover:bg-[#164d31] focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
+                  form={formId}
+                  type="submit"
+                >
+                  {mode === "create" ? "Crea persona" : "Salva modifiche"}
+                </button>
+                <button
+                  className="min-h-11 rounded-xl border border-[#b9c5b8] bg-white px-3 text-sm font-medium text-[#17351f] outline-none transition hover:border-[#78907c] focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
+                  onClick={requestClose}
                   type="button"
                 >
                   Chiudi
                 </button>
               </div>
             </div>
-            <p className="max-w-2xl text-sm leading-6 text-[#34443a]">
+            <p className="hidden max-w-2xl text-sm leading-5 text-[#34443a] md:block">
               Le relazioni si selezionano da dropdown con ricerca integrata, per evitare liste lunghe e poco leggibili.
             </p>
           </div>
@@ -273,6 +298,7 @@ export function PersonEditorModal({
 
         <form
           className="grid gap-4 px-6 py-6 md:grid-cols-2"
+          id={formId}
           onSubmit={(event) => {
             event.preventDefault();
             onSave(draft);
@@ -452,21 +478,6 @@ export function PersonEditorModal({
             </div>
           </section>
 
-          <div className="flex flex-wrap justify-end gap-3 md:col-span-2">
-            <button
-              className="min-h-11 rounded-xl border border-[#cbd5cb] bg-white px-5 text-sm font-medium text-[#34443a] outline-none transition hover:border-[#78907c] focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
-              onClick={onClose}
-              type="button"
-            >
-              Annulla
-            </button>
-            <button
-              className="min-h-11 rounded-xl bg-[#0c3b24] px-5 text-sm font-semibold text-white outline-none transition hover:bg-[#164d31] focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
-              type="submit"
-            >
-              {mode === "create" ? "Crea persona" : "Salva modifiche"}
-            </button>
-          </div>
         </form>
       </div>
     </div>
