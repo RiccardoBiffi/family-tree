@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -131,7 +131,13 @@ describe("FamilyTreeApp", () => {
     const personDialog = await screen.findByRole("dialog", { name: /Giovanni Rinaldi/i });
     expect(personDialog).toBeInTheDocument();
     expect(within(personDialog).getByText(/Scheda persona/i)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Chiudi" }));
+    expect(
+      within(personDialog).queryByRole("button", { name: /Chiudi/i }),
+    ).not.toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
 
     await user.click(screen.getByRole("tab", { name: "Tabella" }));
     expect(
@@ -176,7 +182,10 @@ describe("FamilyTreeApp", () => {
     expect(within(personDialog).getByText(/Giulia Verdi/i)).toBeInTheDocument();
     expect(within(personDialog).getByText(/Nanni/i)).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Chiudi" }));
+    expect(
+      within(personDialog).queryByRole("button", { name: /Chiudi/i }),
+    ).not.toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
     await user.type(screen.getByLabelText("Cerca una persona"), "Giulia");
     await user.click(screen.getByRole("tab", { name: "Tabella" }));
 
@@ -229,6 +238,56 @@ describe("FamilyTreeApp", () => {
 
     const updatedDialog = await screen.findByRole("dialog");
     expect(within(updatedDialog).getByText(/Restauratore/i)).toBeInTheDocument();
+  });
+
+  it("requires confirmation before deleting a person and leaves data untouched on cancel", async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, "confirm");
+    confirm.mockReturnValueOnce(false);
+
+    render(<FamilyTreeApp mode="admin" />);
+    expect(await screen.findByText("Archivio Rinaldi")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Nanni/i }));
+    const personDialog = await screen.findByRole("dialog", {
+      name: /Giovanni Rinaldi/i,
+    });
+    await user.click(
+      within(personDialog).getByRole("button", { name: "Modifica" }),
+    );
+
+    const editor = await screen.findByRole("dialog", {
+      name: /Modifica Nanni/i,
+    });
+    expect(
+      within(editor).queryByRole("button", { name: /Chiudi/i }),
+    ).not.toBeInTheDocument();
+
+    await user.click(
+      within(editor).getByRole("button", { name: "Elimina" }),
+    );
+    expect(confirm).toHaveBeenCalledWith(
+      "Eliminare “Nanni (Giovanni Rinaldi)”? La persona e tutti i suoi contenuti multimediali saranno eliminati definitivamente.",
+    );
+    expect(screen.getByRole("dialog", {
+      name: /Modifica Nanni/i,
+    })).toBeInTheDocument();
+    expect(
+      JSON.parse(
+        window.localStorage.getItem(FAMILY_TREE_STORAGE_KEY) ?? "null",
+      ).people.some((person: { id: string }) => person.id === "p1"),
+    ).toBe(true);
+
+    confirm.mockReturnValueOnce(true);
+    await user.click(screen.getByRole("button", { name: "Elimina" }));
+    await waitFor(() => {
+      const stored = JSON.parse(
+        window.localStorage.getItem(FAMILY_TREE_STORAGE_KEY) ?? "null",
+      );
+      expect(stored.people.some((person: { id: string }) => person.id === "p1")).toBe(false);
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    confirm.mockRestore();
   });
 
   it("keeps access mode out of the visible UI while preserving admin actions", async () => {

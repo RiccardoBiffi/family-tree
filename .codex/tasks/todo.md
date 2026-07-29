@@ -129,3 +129,64 @@
   were not changed.
 - Verification: focused domain tests and the final full project checks pass;
   package references and media assets are closed in both directions.
+
+# Modal simplification feedback
+
+- [x] Remove every visible text button labelled `Chiudi` from product modals while preserving an explicit icon dismissal, Escape, backdrop, focus restoration, and dirty-state warnings.
+- [x] Remove the legacy-attachment concept from editor, person sheet, seed content, save handling, and tests without changing the v1 media-reference contract.
+- [x] Remove generic local-file editing from the person editor.
+- [x] Make the editor portrait/placeholder the single entry point for add, replace, and remove photo actions.
+- [x] Prove create/edit/remove photo flows, no legacy/file UI copy, all modal dismissal paths, desktop/mobile layout, console health, tests, lint, types, and build.
+- [x] Run a fresh critic against the rendered output and close the largest remaining gap.
+
+## Modal simplification review
+
+- `PersonModal` and `PersonEditorModal` now share an icon-only 44x44 close
+  control; Escape, backdrop, focus return, and the editor dirty-state guard
+  still use the existing dialog lifecycle.
+- The editor portrait is the only visible photo surface. It supports add or
+  replace through the image button, plus remove and staged undo from controls
+  placed directly on the portrait.
+- Generic file upload/removal and every legacy text attachment field/display
+  were removed. Existing audio/media references remain playable and portable.
+- Legacy text values are purged idempotently on load and import. The unchanged
+  v1 attachment/media-reference contract remains covered by archive tests.
+- Fresh read-only audit identified product-modal scope and compatibility risks.
+  The largest conflict was resolved by preserving multimedia playback while
+  removing only the editor and legacy concepts requested by the user.
+- Browser proof at 1304x1035 and 390x844 found no removed copy, no horizontal
+  overflow, no console errors, and 44px close/photo controls. Dirty-close
+  cancel preserved the draft; confirm closed it.
+- Verification: TypeScript passes, lint passes, all 45 tests pass, production
+  build passes, and localhost:3000 is healthy with one dev server.
+
+# Modal dismissal, multimedia, and deletion correction
+
+- [x] Remove every explicit close button and icon from all product modals; retain Escape/backdrop dismissal and dirty-state protection.
+- [x] Remove both annotated helper paragraphs from the editor header.
+- [x] Restore a `Contenuti multimediali` editor section in both create and edit modes.
+- [x] Support adding and staging removal/undo of local image, audio, video, and PDF assets.
+- [x] Persist media additions/removals atomically with person changes and preserve `.albero` compatibility.
+- [x] Ask for explicit confirmation before deleting a person or any related local media.
+- [x] Update unit/integration coverage and run desktop/mobile browser verification.
+- [x] Obtain a fresh independent critic verdict against the rendered output.
+
+## Modal/media correction review
+
+- Product modals expose no close text, X icon, or other explicit dismiss control.
+  Escape and backdrop dismissal still share the dirty-state confirmation guard.
+- Both editor modes expose `Contenuti multimediali` for local image, audio,
+  video, and PDF files, including staged add, remove, and restore actions.
+  Portrait editing remains a separate interaction and no legacy attachment UI
+  or copy was reintroduced.
+- Media asset writes and snapshot updates share the existing rollback boundary;
+  `.albero` export/import remains compatible with the unchanged v1 data contract.
+- Person deletion now asks for confirmation before reading, deleting, or
+  replacing person/media state; cancellation is a verified no-op.
+- Verification: targeted tests 20/20, full suite 48/48 across 12 files, ESLint,
+  TypeScript, production build, and `git diff --check` pass.
+- Real-browser proof at 1304x1035 and 390x844 covers create/edit media
+  persistence, dirty Escape/backdrop dismissal, deletion cancel/confirm, 44px
+  visible targets, zero page overflow, and zero serious/critical axe findings.
+- A fresh source-and-render critic returned `WIN`. Its only remaining note is
+  non-blocking native file-picker truncation on mobile.

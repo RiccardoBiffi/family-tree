@@ -1,12 +1,11 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
 
-import { useId, useRef } from "react";
+import { useId } from "react";
 
 import { PersonMediaGallery } from "@/components/PersonMediaGallery";
 import { useDialogFocus } from "@/hooks/useDialogFocus";
 import type { MediaAssetView } from "@/hooks/useMediaLibrary";
-import { parseMediaAssetReference } from "@/models/MediaAsset";
 import type { PersonRecord } from "@/models/Person";
 import {
   formatDateLabel,
@@ -43,18 +42,13 @@ export function PersonModal({
   onEdit,
 }: PersonModalProps) {
   const titleId = useId();
-  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
-  const dialogRef = useDialogFocus<HTMLDivElement>(Boolean(person), onClose, closeButtonRef);
+  const dialogRef = useDialogFocus<HTMLDivElement>(Boolean(person), onClose);
 
   if (!person) {
     return null;
   }
 
   const title = getPersonDisplayName(person);
-  const legacyAttachments =
-    person.attachments?.filter(
-      (attachment) => !parseMediaAssetReference(attachment),
-    ) ?? [];
 
   return (
     <div
@@ -101,25 +95,15 @@ export function PersonModal({
                 </h2>
                 <p className="mt-2 text-sm text-[#526158]">{getLifeSpanLabel(person)}</p>
               </div>
-              <div className="flex gap-2">
-                {onEdit ? (
-                  <button
-                    className="min-h-11 rounded-xl border border-[#b9c5b8] bg-white px-4 text-sm font-medium text-[#17351f] outline-none transition hover:border-[#78907c] focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
-                    onClick={() => onEdit(person.id)}
-                    type="button"
-                  >
-                    Modifica
-                  </button>
-                ) : null}
+              {onEdit ? (
                 <button
-                  className="min-h-11 rounded-xl bg-[#0c3b24] px-4 text-sm font-semibold text-white outline-none transition hover:bg-[#164d31] focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
-                  onClick={onClose}
-                  ref={closeButtonRef}
+                  className="min-h-11 rounded-xl border border-[#b9c5b8] bg-white px-4 text-sm font-medium text-[#17351f] outline-none transition hover:border-[#78907c] focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
+                  onClick={() => onEdit(person.id)}
                   type="button"
                 >
-                  Chiudi
+                  Modifica
                 </button>
-              </div>
+              ) : null}
             </div>
             <p className="max-w-2xl text-sm leading-6 text-[#34443a]">
               {person.notes ?? "Nessuna nota disponibile."}
@@ -194,22 +178,17 @@ export function PersonModal({
 
           <section className="rounded-[18px] border border-[#dfe5df] bg-white px-5 py-5 md:col-span-2">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Materiali e note</p>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <div className="mt-4">
               <div>
                 <h3 className="text-sm font-semibold text-slate-900">Segni distintivi</h3>
                 <p className="mt-1 text-sm text-slate-700">
                   {person.distinguishingMarks ?? "Nessun dettaglio annotato."}
                 </p>
               </div>
-              <div>
-                <h3 className="text-sm font-semibold text-slate-900">Allegati</h3>
-                <p className="mt-1 text-sm text-slate-700">
-                  {legacyAttachments.length > 0
-                    ? legacyAttachments.join(", ")
-                    : "Nessun allegato testuale."}
-                </p>
-              </div>
             </div>
+            {media.length > 0 ? (
+              <h3 className="mt-5 text-sm font-semibold text-slate-900">Contenuti multimediali</h3>
+            ) : null}
             <PersonMediaGallery media={media} />
           </section>
         </div>

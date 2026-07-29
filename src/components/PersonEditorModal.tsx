@@ -10,11 +10,14 @@ import { getPersonDisplayName, getPersonShortName } from "@/utils/familyTree";
 
 export type PersonMediaKind = "image" | "audio" | "video" | "pdf" | "file";
 
-export interface PersonMediaView {
+export interface PersonPhotoView {
   id: string;
   fileName: string;
-  kind: PersonMediaKind;
   url: string;
+}
+
+export interface PersonMediaView extends PersonPhotoView {
+  kind: PersonMediaKind;
 }
 
 export interface PersonMediaChanges {
@@ -29,7 +32,7 @@ export interface PersonEditorModalProps {
   people: PersonRecord[];
   person: PersonRecord;
   existingMedia?: readonly PersonMediaView[];
-  existingPhoto?: PersonMediaView | null;
+  existingPhoto?: PersonPhotoView | null;
   onClose: () => void;
   onDelete?: (personId: string) => void;
   onSave: (draft: PersonRecord, mediaChanges: PersonMediaChanges) => void;
@@ -215,9 +218,6 @@ export function PersonEditorModal({
   const [draft, setDraft] = useState<PersonRecord>(person);
   const titleId = useId();
   const [tagsText, setTagsText] = useState(() => formatCommaSeparated(person.tags));
-  const [attachmentsText, setAttachmentsText] = useState(() =>
-    formatCommaSeparated(person.attachments),
-  );
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [removePhoto, setRemovePhoto] = useState(false);
   const [mediaFiles, setMediaFiles] = useState<File[]>([]);
@@ -225,11 +225,11 @@ export function PersonEditorModal({
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
   const formId = useId();
   const firstInputRef = useRef<HTMLInputElement | null>(null);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     setDraft(person);
     setTagsText(formatCommaSeparated(person.tags));
-    setAttachmentsText(formatCommaSeparated(person.attachments));
     setPhotoFile(null);
     setRemovePhoto(false);
     setMediaFiles([]);
@@ -251,20 +251,16 @@ export function PersonEditorModal({
   }, [photoFile]);
 
   const initialTagsText = formatCommaSeparated(person.tags);
-  const initialAttachmentsText = formatCommaSeparated(person.attachments);
   const hasUnsavedChanges = useMemo(
     () =>
       JSON.stringify(draft) !== JSON.stringify(person) ||
       tagsText !== initialTagsText ||
-      attachmentsText !== initialAttachmentsText ||
       photoFile !== null ||
       removePhoto ||
       mediaFiles.length > 0 ||
       removedMediaIds.length > 0,
     [
-      attachmentsText,
       draft,
-      initialAttachmentsText,
       initialTagsText,
       mediaFiles.length,
       person,
@@ -305,6 +301,16 @@ export function PersonEditorModal({
     : removePhoto
       ? null
       : existingPhoto?.url ?? draft.photo;
+  const hasOriginalPhoto = Boolean(existingPhoto?.url ?? draft.photo);
+
+  const choosePhoto = () => {
+    photoInputRef.current?.click();
+  };
+
+  const removeCurrentPhoto = () => {
+    setPhotoFile(null);
+    setRemovePhoto(hasOriginalPhoto);
+  };
 
   const toggleMediaRemoval = (mediaId: string) => {
     setRemovedMediaIds((currentIds) =>
@@ -335,20 +341,72 @@ export function PersonEditorModal({
         tabIndex={-1}
       >
         <div className="sticky top-0 z-30 grid grid-cols-[72px_minmax(0,1fr)] gap-3 border-b border-[#dfe5df] bg-[#f4f7f3]/[0.98] px-4 py-4 shadow-[0_8px_24px_rgba(12,59,36,0.06)] backdrop-blur sm:px-5 md:grid-cols-[132px_minmax(0,1fr)] md:gap-5 md:px-6">
-          <div className="flex min-h-20 items-end rounded-[16px] border border-[#cbd5cb] bg-white p-2 md:min-h-32 md:p-3">
+          <div className="relative min-h-20 rounded-[16px] border border-[#cbd5cb] bg-white p-2 md:min-h-32 md:p-3">
+            <input
+              accept={PHOTO_ACCEPT}
+              aria-label="Seleziona foto"
+              className="sr-only"
+              onChange={(event) => {
+                const nextPhotoFile = event.target.files?.[0] ?? null;
+                if (nextPhotoFile) {
+                  setPhotoFile(nextPhotoFile);
+                  setRemovePhoto(false);
+                }
+                event.target.value = "";
+              }}
+              ref={photoInputRef}
+              tabIndex={-1}
+              type="file"
+            />
+            <button
+              aria-label={currentPhotoUrl ? "Sostituisci foto" : "Aggiungi foto"}
+              className="group relative flex h-full min-h-16 w-full items-center justify-center overflow-hidden rounded-[12px] border border-dashed border-[#b9c5b8] bg-[#edf2e9] outline-none transition hover:border-[#78907c] focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2 md:min-h-28"
+              onClick={choosePhoto}
+              type="button"
+            >
+              {currentPhotoUrl ? (
+                <img
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover"
+                  src={currentPhotoUrl}
+                />
+              ) : (
+                <span className="font-[family-name:var(--font-display)] text-2xl text-[#0c3b24] md:text-4xl">
+                  {(draft.name || title).slice(0, 2).toUpperCase()}
+                </span>
+              )}
+              <span className="absolute inset-x-2 bottom-2 flex min-h-11 items-center justify-center rounded-xl bg-[#0c3b24]/90 text-white opacity-100 shadow-sm transition md:opacity-0 md:group-hover:opacity-100 md:group-focus-visible:opacity-100">
+                <svg aria-hidden="true" fill="none" height="18" viewBox="0 0 24 24" width="18">
+                  <path d="M4 8.5h3l1.4-2h7.2l1.4 2h3v9H4z" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.7" />
+                  <circle cx="12" cy="13" r="3" stroke="currentColor" strokeWidth="1.7" />
+                </svg>
+              </span>
+            </button>
             {currentPhotoUrl ? (
-              <img
-                alt={title}
-                className="h-full max-h-32 w-full rounded-[12px] object-cover"
-                src={currentPhotoUrl}
-              />
-            ) : (
-              <div className="flex h-full min-h-16 w-full items-center justify-center rounded-[12px] border border-dashed border-[#b9c5b8] bg-[#edf2e9] font-[family-name:var(--font-display)] text-2xl text-[#0c3b24] md:min-h-28 md:text-4xl">
-                {(draft.name || title).slice(0, 2).toUpperCase()}
-              </div>
-            )}
+              <button
+                aria-label="Rimuovi foto"
+                className="absolute right-1 top-1 flex h-11 w-11 items-center justify-center rounded-xl border border-white/80 bg-white text-[#8b3030] shadow-md outline-none transition hover:bg-[#fff5f5] focus-visible:ring-2 focus-visible:ring-[#8b3030] focus-visible:ring-offset-2 md:right-2 md:top-2"
+                onClick={removeCurrentPhoto}
+                type="button"
+              >
+                <svg aria-hidden="true" fill="none" height="18" viewBox="0 0 24 24" width="18">
+                  <path d="M5 7h14M9 7V5h6v2m-8 0 1 12h8l1-12M10 10v6m4-6v6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" />
+                </svg>
+              </button>
+            ) : removePhoto ? (
+              <button
+                aria-label="Ripristina foto"
+                className="absolute right-1 top-1 flex h-11 w-11 items-center justify-center rounded-xl border border-white/80 bg-white text-[#17351f] shadow-md outline-none transition hover:bg-[#edf2e9] focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2 md:right-2 md:top-2"
+                onClick={() => setRemovePhoto(false)}
+                type="button"
+              >
+                <svg aria-hidden="true" fill="none" height="18" viewBox="0 0 24 24" width="18">
+                  <path d="M5 8v5h5M6.6 16.5A7 7 0 1 0 6 8.6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" />
+                </svg>
+              </button>
+            ) : null}
           </div>
-          <div className="min-w-0 space-y-3">
+          <div className="min-w-0">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#65746a]">
@@ -360,9 +418,6 @@ export function PersonEditorModal({
                 >
                   {title}
                 </h2>
-                <p className="mt-1 hidden text-sm text-[#526158] sm:block">
-                  Usa la stessa struttura della scheda persona e salva quando i dati sono coerenti.
-                </p>
               </div>
               <div className="flex flex-wrap gap-2 md:justify-end">
                 {mode === "edit" && draft.id && onDelete ? (
@@ -381,18 +436,8 @@ export function PersonEditorModal({
                 >
                   {mode === "create" ? "Crea persona" : "Salva modifiche"}
                 </button>
-                <button
-                  className="min-h-11 rounded-xl border border-[#b9c5b8] bg-white px-3 text-sm font-medium text-[#17351f] outline-none transition hover:border-[#78907c] focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
-                  onClick={requestClose}
-                  type="button"
-                >
-                  Chiudi
-                </button>
               </div>
             </div>
-            <p className="hidden max-w-2xl text-sm leading-5 text-[#34443a] md:block">
-              Le relazioni si selezionano da dropdown con ricerca integrata, per evitare liste lunghe e poco leggibili.
-            </p>
           </div>
         </div>
 
@@ -404,7 +449,6 @@ export function PersonEditorModal({
             onSave(
               {
                 ...draft,
-                attachments: normalizeCommaSeparated(attachmentsText),
                 tags: normalizeCommaSeparated(tagsText),
               },
               {
@@ -544,93 +588,14 @@ export function PersonEditorModal({
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <div className="space-y-3 rounded-2xl border border-[#dfe5df] bg-[#f8faf7] p-4 md:col-span-2">
                 <div>
-                  <p className="text-sm font-semibold text-[#17351f]">Foto locale</p>
-                  <p className="mt-1 text-sm text-slate-600">
-                    Seleziona un&apos;immagine dal dispositivo. Puoi sostituire o rimuovere la foto locale esistente.
-                  </p>
-                </div>
-                <label className="block space-y-2">
-                  <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                    Carica foto locale
-                  </span>
-                  <input
-                    accept={PHOTO_ACCEPT}
-                    className="block min-h-11 w-full rounded-xl border border-[#cbd5cb] bg-white px-3 py-2 text-sm text-[#152219] file:mr-3 file:min-h-11 file:rounded-lg file:border-0 file:bg-[#e8efe8] file:px-4 file:text-sm file:font-semibold file:text-[#17351f] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
-                    onChange={(event) => {
-                      const nextPhotoFile = event.target.files?.[0] ?? null;
-                      if (nextPhotoFile) {
-                        setPhotoFile(nextPhotoFile);
-                        setRemovePhoto(false);
-                      }
-                      event.target.value = "";
-                    }}
-                    type="file"
-                  />
-                </label>
-                {existingPhoto ? (
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#dfe5df] bg-white px-3 py-2">
-                    <div className="min-w-0">
-                      <a
-                        className={`flex min-h-11 items-center truncate text-sm font-medium underline decoration-[#a9b8aa] underline-offset-4 ${
-                          removePhoto ? "text-slate-400 line-through" : "text-[#17351f]"
-                        }`}
-                        href={existingPhoto.url}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        {existingPhoto.fileName}
-                      </a>
-                      <span className="text-xs text-slate-500">
-                        {removePhoto
-                          ? "La foto verrà rimossa al salvataggio"
-                          : photoFile
-                            ? "La foto verrà sostituita al salvataggio"
-                            : "Foto locale esistente"}
-                      </span>
-                    </div>
-                    <button
-                      aria-label={removePhoto ? "Annulla rimozione foto" : "Rimuovi foto esistente"}
-                      className="min-h-11 rounded-xl border border-[#cbd5cb] bg-white px-3 text-sm font-semibold text-[#17351f] outline-none transition hover:border-[#78907c] focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
-                      onClick={() => {
-                        if (removePhoto) {
-                          setRemovePhoto(false);
-                        } else {
-                          setPhotoFile(null);
-                          setRemovePhoto(true);
-                        }
-                      }}
-                      type="button"
-                    >
-                      {removePhoto ? "Annulla rimozione" : "Rimuovi"}
-                    </button>
-                  </div>
-                ) : null}
-                {photoFile ? (
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#b9c5b8] bg-white px-3 py-2">
-                    <span className="min-w-0 break-all text-sm font-medium text-[#17351f]">
-                      {photoFile.name}
-                    </span>
-                    <button
-                      aria-label={`Rimuovi nuova foto ${photoFile.name}`}
-                      className="min-h-11 rounded-xl border border-[#cbd5cb] bg-white px-3 text-sm font-semibold text-[#17351f] outline-none transition hover:border-[#78907c] focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
-                      onClick={() => setPhotoFile(null)}
-                      type="button"
-                    >
-                      Rimuovi nuova foto
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-              <div className="space-y-3 rounded-2xl border border-[#dfe5df] bg-[#f8faf7] p-4 md:col-span-2">
-                <div>
-                  <p className="text-sm font-semibold text-[#17351f]">File locali</p>
+                  <p className="text-sm font-semibold text-[#17351f]">Contenuti multimediali</p>
                   <p className="mt-1 text-sm text-slate-600">
                     Aggiungi immagini, audio, video o PDF dal dispositivo.
                   </p>
                 </div>
                 <label className="block space-y-2">
                   <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                    Aggiungi file multimediali
+                    Aggiungi contenuti multimediali
                   </span>
                   <input
                     accept={MEDIA_ACCEPT}
@@ -647,7 +612,7 @@ export function PersonEditorModal({
                   />
                 </label>
                 {existingMedia.length > 0 ? (
-                  <ul aria-label="File locali esistenti" className="space-y-2">
+                  <ul aria-label="Contenuti multimediali esistenti" className="space-y-2">
                     {existingMedia.map((media) => {
                       const isRemoved = removedMediaIds.includes(media.id);
 
@@ -673,12 +638,12 @@ export function PersonEditorModal({
                             </span>
                           </div>
                           <button
-                            aria-label={`${isRemoved ? "Annulla rimozione di" : "Rimuovi"} ${media.fileName}`}
+                            aria-label={`${isRemoved ? "Ripristina" : "Rimuovi"} ${media.fileName}`}
                             className="min-h-11 rounded-xl border border-[#cbd5cb] bg-white px-3 text-sm font-semibold text-[#17351f] outline-none transition hover:border-[#78907c] focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
                             onClick={() => toggleMediaRemoval(media.id)}
                             type="button"
                           >
-                            {isRemoved ? "Annulla" : "Rimuovi"}
+                            {isRemoved ? "Ripristina" : "Rimuovi"}
                           </button>
                         </li>
                       );
@@ -686,7 +651,7 @@ export function PersonEditorModal({
                   </ul>
                 ) : null}
                 {mediaFiles.length > 0 ? (
-                  <ul aria-label="Nuovi file locali" className="space-y-2">
+                  <ul aria-label="Nuovi contenuti multimediali" className="space-y-2">
                     {mediaFiles.map((file, index) => (
                       <li
                         className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#b9c5b8] bg-white px-3 py-2"
@@ -696,7 +661,7 @@ export function PersonEditorModal({
                           {file.name}
                         </span>
                         <button
-                          aria-label={`Rimuovi nuovo file ${file.name}`}
+                          aria-label={`Rimuovi nuovo contenuto ${file.name}`}
                           className="min-h-11 rounded-xl border border-[#cbd5cb] bg-white px-3 text-sm font-semibold text-[#17351f] outline-none transition hover:border-[#78907c] focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
                           onClick={() =>
                             setMediaFiles((currentFiles) =>
@@ -721,17 +686,6 @@ export function PersonEditorModal({
                   onChange={(event) => setTagsText(event.target.value)}
                   placeholder="raduno, archivio, ricerca"
                   value={tagsText}
-                />
-              </label>
-              <label className="space-y-2">
-                <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                  Allegati legacy separati da virgola
-                </span>
-                <input
-                  className={fieldClassName}
-                  onChange={(event) => setAttachmentsText(event.target.value)}
-                  placeholder="Album 1972, Intervista audio 2004"
-                  value={attachmentsText}
                 />
               </label>
               <label className="space-y-2">

@@ -6,7 +6,10 @@ import { describe, expect, it } from "vitest";
 import { demoMediaDefinitions } from "@/data/demoMedia";
 import { seedFamilyTree } from "@/data/seedFamilyTree";
 import { parseMediaAssetReference } from "@/models/MediaAsset";
-import { addMissingDemoMediaReferences } from "@/utils/demoMediaMigration";
+import {
+  addMissingDemoMediaReferences,
+  removeLegacyAttachmentValues,
+} from "@/utils/demoMediaMigration";
 
 describe("demo media", () => {
   it("ships one local portrait and one local audio postcard for every demo person", () => {
@@ -68,5 +71,26 @@ describe("demo media", () => {
         `media:demo-${person.id}-audio`,
       );
     }
+  });
+
+  it("removes legacy text attachment values without touching media references", () => {
+    const snapshot = {
+      ...seedFamilyTree,
+      people: seedFamilyTree.people.map((person, index) => ({
+        ...person,
+        attachments:
+          index === 0
+            ? ["Album cartaceo", "media:demo-p1-audio"]
+            : person.attachments,
+      })),
+    };
+
+    const cleaned = removeLegacyAttachmentValues(snapshot);
+
+    expect(cleaned).not.toBe(snapshot);
+    expect(cleaned.people[0]?.attachments).toEqual([
+      "media:demo-p1-audio",
+    ]);
+    expect(removeLegacyAttachmentValues(cleaned)).toBe(cleaned);
   });
 });

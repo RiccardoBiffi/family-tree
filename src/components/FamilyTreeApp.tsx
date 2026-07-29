@@ -30,10 +30,12 @@ import {
   addMissingDemoMediaReferences,
   hasCompletedDemoMediaMigration,
   markDemoMediaMigrationComplete,
+  removeLegacyAttachmentValues,
 } from "@/utils/demoMediaMigration";
 import {
   createEmptyPersonDraft,
   createPersonId,
+  getPersonDisplayName,
   validateFamilyTree,
 } from "@/utils/familyTree";
 
@@ -88,15 +90,6 @@ function getPersonMediaAssetIds(person: PersonRecord): string[] {
   return [person.photo, ...(person.attachments ?? [])]
     .map((value) => parseMediaAssetReference(value))
     .filter((assetId): assetId is string => Boolean(assetId));
-}
-
-function getLegacyAttachments(person: PersonRecord): string[] | null {
-  const attachments =
-    person.attachments?.filter(
-      (attachment) => !parseMediaAssetReference(attachment),
-    ) ?? [];
-
-  return attachments.length > 0 ? attachments : null;
 }
 
 function createArchiveFileName(familyName: string): string {
@@ -207,7 +200,10 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
             photo: parseMediaAssetReference(editorStoredPerson.photo)
               ? null
               : editorStoredPerson.photo,
-            attachments: getLegacyAttachments(editorStoredPerson),
+            attachments:
+              editorStoredPerson.attachments?.filter((value) =>
+                Boolean(parseMediaAssetReference(value)),
+              ) ?? null,
           }
         : null,
     [editorStoredPerson],
@@ -257,15 +253,18 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
     }
 
     didMigrateDemoMediaRef.current = true;
-    if (hasCompletedDemoMediaMigration()) {
-      return;
+    let migratedSnapshot = snapshot;
+    if (!hasCompletedDemoMediaMigration()) {
+      migratedSnapshot =
+        addMissingDemoMediaReferences(migratedSnapshot);
+      markDemoMediaMigrationComplete();
     }
 
-    const migratedSnapshot = addMissingDemoMediaReferences(snapshot);
+    migratedSnapshot =
+      removeLegacyAttachmentValues(migratedSnapshot);
     if (migratedSnapshot !== snapshot) {
       replaceSnapshot(migratedSnapshot);
     }
-    markDemoMediaMigrationComplete();
   }, [needsArchiveSetup, replaceSnapshot, snapshot]);
 
   useEffect(() => {
@@ -378,7 +377,9 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
     try {
       const existingPerson = storedPeopleById.get(personId);
       previousAssets = await refreshAssets();
-      const removedAssetIds = new Set(mediaChanges.removedMediaIds);
+      const removedAssetIds = new Set<string>(
+        mediaChanges.removedMediaIds,
+      );
       const existingPhotoAssetId = parseMediaAssetReference(
         existingPerson?.photo,
       );
@@ -405,24 +406,18 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
         photo = createMediaAssetReference(photoAsset.id);
       }
 
-      const existingAttachmentAssetIds = (
-        existingPerson?.attachments ?? []
+      const retainedAttachmentAssetIds = (
+        existingPerson?.attachments ?? draft.attachments ?? []
       )
-        .map((attachment) => parseMediaAssetReference(attachment))
+        .map((value) => parseMediaAssetReference(value))
         .filter((assetId): assetId is string => Boolean(assetId))
         .filter((assetId) => !removedAssetIds.has(assetId));
       const newAttachmentAssets = mediaChanges.mediaFiles.map((file) =>
         createAssetFromFile(personId, "attachment", file),
       );
       newAssets.push(...newAttachmentAssets);
-
-      const legacyAttachments =
-        draft.attachments?.filter(
-          (attachment) => !parseMediaAssetReference(attachment),
-        ) ?? [];
       const attachments = [
-        ...legacyAttachments,
-        ...existingAttachmentAssetIds.map(createMediaAssetReference),
+        ...retainedAttachmentAssetIds.map(createMediaAssetReference),
         ...newAttachmentAssets.map((asset) =>
           createMediaAssetReference(asset.id),
         ),
@@ -460,6 +455,18 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
 
 
   const handleDeletePerson = async (personId: string) => {
+    const person = storedPeopleById.get(personId);
+    if (!person) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Eliminare “${getPersonDisplayName(person)}”? La persona e tutti i suoi contenuti multimediali saranno eliminati definitivamente.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
     const previousAssets = await refreshAssets();
     const nextAssets = previousAssets.filter(
       (asset) => asset.personId !== personId,
@@ -514,7 +521,9 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
 
     try {
       await replaceAssets(imported.assets);
-      replaceSnapshot(imported.snapshot);
+      replaceSnapshot(
+        removeLegacyAttachmentValues(imported.snapshot),
+      );
       markDemoMediaMigrationComplete();
       didMigrateDemoMediaRef.current = true;
     } catch (error) {

@@ -55,6 +55,16 @@ const rounds = [
     status: "Passed",
     finding: "Downloaded .albero matched its Blob byte-for-byte; destructive clear/import/reload restored 21 assets with identical SHA-256 inventories.",
   },
+  {
+    name: "Modal feedback round 8",
+    status: "Passed",
+    finding: "Icon-only dismissal, portrait photo controls, archive-data cleanup, dirty-close protection, and exact desktop/mobile browser checks pass.",
+  },
+  {
+    name: "Modal/media correction round 9",
+    status: "Passed",
+    finding: "All close controls are gone; local multimedia add/remove, dirty Escape/backdrop, and confirmed person deletion pass in real browsers.",
+  },
 ];
 
 const goldReferences = [
@@ -121,7 +131,7 @@ export default function ProgressPage() {
               Current status
             </h2>
             <span className="rounded-full bg-[#fff0d8] px-3 py-1.5 text-xs font-semibold text-[#8b5b12]">
-              Candidate wins · portability verified
+              Candidate wins · modal/media verified
             </span>
           </div>
           <div className="mt-4 grid gap-px overflow-hidden rounded-2xl border border-[#cbd5cb] bg-[#cbd5cb] md:grid-cols-2 xl:grid-cols-4">
@@ -217,8 +227,9 @@ export default function ProgressPage() {
           <p className="mt-4 text-sm leading-6 text-[#526158]">
             Largest critic gaps closed: diagram framing, timeline density, relationship removal
             after reload, all-column reordering, editor close protection, package reference closure,
-            toolbar stacking, local-only media editing, and invalid-file rollback. Remaining intentional
-            delta: the gold mobile concepts use a taller canvas; the product keeps the 390×844 page
+            toolbar stacking, portrait-based photo editing, archive-data cleanup, invalid-file rollback,
+            Esc/backdrop-only modal dismissal, local multimedia editing, and confirmed person deletion.
+            Remaining intentional delta: the gold mobile concepts use a taller canvas; the product keeps the 390×844 page
             contained and gives the visualization its own pan/scroll surface.
           </p>
         </section>
@@ -318,6 +329,50 @@ export default function ProgressPage() {
                 className="h-auto w-full"
                 height={844}
                 src="/qa/latest-archive-mobile.png"
+                width={390}
+              />
+            </figure>
+          </div>
+        </section>
+
+        <section aria-labelledby="modal-evidence-heading" className="pb-8">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold" id="modal-evidence-heading">
+                Modal dismissal and multimedia
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-[#526158]">
+                Product modals now dismiss only through Escape or the backdrop. The portrait
+                remains the photo surface, while the restored local multimedia panel supports
+                add, remove, and undo in both create and edit flows without legacy attachment fields.
+              </p>
+            </div>
+            <span className="rounded-full bg-[#e5f4e8] px-3 py-1.5 text-xs font-semibold text-[#0c3b24]">
+              48 tests · 0 serious axe · 0 overflow
+            </span>
+          </div>
+          <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+            <figure className="overflow-hidden rounded-2xl border border-[#cbd5cb] bg-white">
+              <figcaption className="border-b border-[#dfe5df] px-4 py-3 text-sm font-semibold">
+                Person editor · 1304×1035
+              </figcaption>
+              <Image
+                alt="Verified desktop editor with no close control and local multimedia editing"
+                className="h-auto w-full"
+                height={1035}
+                src="/qa/latest-modal-desktop.png"
+                width={1304}
+              />
+            </figure>
+            <figure className="overflow-hidden rounded-2xl border border-[#cbd5cb] bg-white">
+              <figcaption className="border-b border-[#dfe5df] px-4 py-3 text-sm font-semibold">
+                Person editor · 390×844
+              </figcaption>
+              <Image
+                alt="Verified mobile editor with staged local multimedia and no close control"
+                className="h-auto w-full"
+                height={844}
+                src="/qa/latest-modal-mobile.png"
                 width={390}
               />
             </figure>
