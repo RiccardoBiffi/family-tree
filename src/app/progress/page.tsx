@@ -45,6 +45,16 @@ const rounds = [
     status: "Passed",
     finding: "Real-browser save/reload, all-column reordering, sticky editor, dirty-close guard, onboarding, and 2px selection pass.",
   },
+  {
+    name: "Local media round 6",
+    status: "Critiqued",
+    finding: "Ten portraits, ten sound postcards, IndexedDB storage, and the archive menu shipped; critics exposed package-closure and local-only editor gaps.",
+  },
+  {
+    name: "Portability round 7",
+    status: "Passed",
+    finding: "Downloaded .albero matched its Blob byte-for-byte; destructive clear/import/reload restored 21 assets with identical SHA-256 inventories.",
+  },
 ];
 
 const goldReferences = [
@@ -111,7 +121,7 @@ export default function ProgressPage() {
               Current status
             </h2>
             <span className="rounded-full bg-[#fff0d8] px-3 py-1.5 text-xs font-semibold text-[#8b5b12]">
-              Candidate wins · all fresh critics
+              Candidate wins · portability verified
             </span>
           </div>
           <div className="mt-4 grid gap-px overflow-hidden rounded-2xl border border-[#cbd5cb] bg-[#cbd5cb] md:grid-cols-2 xl:grid-cols-4">
@@ -206,7 +216,8 @@ export default function ProgressPage() {
           </div>
           <p className="mt-4 text-sm leading-6 text-[#526158]">
             Largest critic gaps closed: diagram framing, timeline density, relationship removal
-            after reload, all-column reordering, and editor close protection. Remaining intentional
+            after reload, all-column reordering, editor close protection, package reference closure,
+            toolbar stacking, local-only media editing, and invalid-file rollback. Remaining intentional
             delta: the gold mobile concepts use a taller canvas; the product keeps the 390×844 page
             contained and gives the visualization its own pan/scroll surface.
           </p>
@@ -267,6 +278,49 @@ export default function ProgressPage() {
                 />
               </figure>
             </div>
+          </div>
+        </section>
+
+        <section aria-labelledby="media-evidence-heading" className="pb-8">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold" id="media-evidence-heading">
+                Local media and portable archive
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-[#526158]">
+                Final browser proof: local portrait and audio playback, then one-file export,
+                destructive local clear, import, reload, and byte-identical asset recovery.
+              </p>
+            </div>
+            <span className="rounded-full bg-[#e5f4e8] px-3 py-1.5 text-xs font-semibold text-[#0c3b24]">
+              21 assets · 2,508,450 bytes · 0 console errors
+            </span>
+          </div>
+          <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+            <figure className="overflow-hidden rounded-2xl border border-[#cbd5cb] bg-white">
+              <figcaption className="border-b border-[#dfe5df] px-4 py-3 text-sm font-semibold">
+                Person sheet · local portrait and audio
+              </figcaption>
+              <Image
+                alt="Final desktop person sheet with a local portrait and two audio players"
+                className="h-auto w-full"
+                height={900}
+                src="/qa/latest-media-desktop.png"
+                width={1440}
+              />
+            </figure>
+            <figure className="overflow-hidden rounded-2xl border border-[#cbd5cb] bg-white">
+              <figcaption className="border-b border-[#dfe5df] px-4 py-3 text-sm font-semibold">
+                Archive menu · 390×844
+              </figcaption>
+              <Image
+                alt="Final mobile archive import and export menu"
+                className="h-auto w-full"
+                height={844}
+                src="/qa/latest-archive-mobile.png"
+                width={390}
+              />
+            </figure>
           </div>
         </section>
 

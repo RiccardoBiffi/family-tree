@@ -242,7 +242,7 @@ describe("FamilyTreeApp", () => {
     render(<FamilyTreeApp mode="admin" />);
 
     expect(await screen.findByRole("button", { name: "Nuova persona" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ripristina demo" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Gestisci archivio" })).toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
     expect(screen.queryByText(/visitatore|modalità admin|amministrazione/i)).not.toBeInTheDocument();
   });

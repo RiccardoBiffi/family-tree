@@ -1,18 +1,41 @@
 "use client";
 
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { ArchiveActions } from "@/components/ArchiveActions";
 import { ArchiveIcon } from "@/components/ArchiveIcon";
 import { ArchiveOnboarding } from "@/components/ArchiveOnboarding";
 import { PeopleTable } from "@/components/PeopleTable";
-import { PersonEditorModal } from "@/components/PersonEditorModal";
+import {
+  PersonEditorModal,
+  type PersonMediaChanges,
+} from "@/components/PersonEditorModal";
 import { PersonModal } from "@/components/PersonModal";
 import { TimelineView } from "@/components/TimelineView";
 import { TreeDiagramView } from "@/components/TreeDiagramView";
 import { useFamilyTreeStore } from "@/hooks/useFamilyTreeStore";
+import { useMediaLibrary } from "@/hooks/useMediaLibrary";
+import {
+  createMediaAssetReference,
+  parseMediaAssetReference,
+  type MediaAssetRecord,
+} from "@/models/MediaAsset";
 import type { PersonRecord } from "@/models/Person";
-import { createEmptyPersonDraft, createPersonId, validateFamilyTree } from "@/utils/familyTree";
+import {
+  ALBERO_FILE_EXTENSION,
+  exportAlberoPackage,
+  importAlberoPackage,
+} from "@/utils/alberoPackage";
+import {
+  addMissingDemoMediaReferences,
+  hasCompletedDemoMediaMigration,
+  markDemoMediaMigrationComplete,
+} from "@/utils/demoMediaMigration";
+import {
+  createEmptyPersonDraft,
+  createPersonId,
+  validateFamilyTree,
+} from "@/utils/familyTree";
 
 type AppMode = "visitor" | "admin";
 type AppView = "diagram" | "table" | "timeline";
@@ -61,32 +84,109 @@ function formatArchiveDate(value: string) {
     .replaceAll(".", "");
 }
 
+function getPersonMediaAssetIds(person: PersonRecord): string[] {
+  return [person.photo, ...(person.attachments ?? [])]
+    .map((value) => parseMediaAssetReference(value))
+    .filter((assetId): assetId is string => Boolean(assetId));
+}
+
+function getLegacyAttachments(person: PersonRecord): string[] | null {
+  const attachments =
+    person.attachments?.filter(
+      (attachment) => !parseMediaAssetReference(attachment),
+    ) ?? [];
+
+  return attachments.length > 0 ? attachments : null;
+}
+
+function createArchiveFileName(familyName: string): string {
+  const slug =
+    familyName
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/gu, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/gu, "-")
+      .replace(/^-+|-+$/gu, "") || "famiglia";
+  const date = new Date().toISOString().slice(0, 10);
+
+  return `archivio-${slug}-${date}${ALBERO_FILE_EXTENSION}`;
+}
+
+function showSaveError(error: unknown) {
+  const detail =
+    error instanceof Error && error.message
+      ? `\n\nDettaglio: ${error.message}`
+      : "";
+  window.alert(
+    `Non è stato possibile salvare i media locali. Nessuna modifica è stata applicata.${detail}`,
+  );
+}
+
 export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
   const {
     snapshot,
     isLoaded,
     needsArchiveSetup,
     initializeArchive,
+    replaceSnapshot,
     upsertPerson,
     deletePerson,
-    resetDemoData,
   } = useFamilyTreeStore();
+  const {
+    viewsById,
+    isReady: isMediaReady,
+    error: mediaError,
+    refreshAssets,
+    replaceAssets,
+    ensureDemoAssets,
+    createAssetFromFile,
+  } = useMediaLibrary();
   const [view, setView] = useState<AppView>("diagram");
   const [query, setQuery] = useState("");
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   const [editorState, setEditorState] = useState<EditorState | null>(null);
+  const didMigrateDemoMediaRef = useRef(false);
   const deferredQuery = useDeferredValue(query);
   const isAdmin = mode === "admin";
   const people = snapshot?.people ?? emptyPeople;
-  const peopleById = useMemo(
+  const storedPeopleById = useMemo(
     () => new Map(people.map((person) => [person.id, person])),
     [people],
   );
+  const displayPeople = useMemo(
+    () =>
+      people.map((person) => {
+        const photoAssetId = parseMediaAssetReference(person.photo);
+        if (!photoAssetId) {
+          return person;
+        }
+
+        return {
+          ...person,
+          photo: viewsById.get(photoAssetId)?.url ?? null,
+        };
+      }),
+    [people, viewsById],
+  );
+  const peopleById = useMemo(
+    () => new Map(displayPeople.map((person) => [person.id, person])),
+    [displayPeople],
+  );
   const selectedPerson = useMemo(
-    () => (selectedPersonId && snapshot ? peopleById.get(selectedPersonId) ?? null : null),
+    () =>
+      selectedPersonId && snapshot
+        ? peopleById.get(selectedPersonId) ?? null
+        : null,
     [peopleById, selectedPersonId, snapshot],
   );
-  const editorPerson = useMemo(() => {
+  const selectedStoredPerson = useMemo(
+    () =>
+      selectedPersonId
+        ? storedPeopleById.get(selectedPersonId) ?? null
+        : null,
+    [selectedPersonId, storedPeopleById],
+  );
+  const editorStoredPerson = useMemo(() => {
     if (!editorState) {
       return null;
     }
@@ -95,18 +195,112 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
       return editorState.draft;
     }
 
-    return snapshot ? peopleById.get(editorState.personId) ?? null : null;
-  }, [editorState, peopleById, snapshot]);
-  const warnings = useMemo(() => (snapshot ? validateFamilyTree(snapshot) : []), [snapshot]);
-  const isEditorOpen = isAdmin && editorState !== null && editorPerson !== null;
+    return snapshot
+      ? storedPeopleById.get(editorState.personId) ?? null
+      : null;
+  }, [editorState, snapshot, storedPeopleById]);
+  const editorPerson = useMemo(
+    () =>
+      editorStoredPerson
+        ? {
+            ...editorStoredPerson,
+            photo: parseMediaAssetReference(editorStoredPerson.photo)
+              ? null
+              : editorStoredPerson.photo,
+            attachments: getLegacyAttachments(editorStoredPerson),
+          }
+        : null,
+    [editorStoredPerson],
+  );
+  const selectedMedia = useMemo(
+    () =>
+      (selectedStoredPerson?.attachments ?? [])
+        .map((attachment) => parseMediaAssetReference(attachment))
+        .filter((assetId): assetId is string => Boolean(assetId))
+        .map((assetId) => viewsById.get(assetId))
+        .filter((asset) => asset !== undefined),
+    [selectedStoredPerson, viewsById],
+  );
+  const editorPhoto = useMemo(() => {
+    const assetId = parseMediaAssetReference(editorStoredPerson?.photo);
+    return assetId ? viewsById.get(assetId) ?? null : null;
+  }, [editorStoredPerson, viewsById]);
+  const editorMedia = useMemo(
+    () =>
+      (editorStoredPerson?.attachments ?? [])
+        .map((attachment) => parseMediaAssetReference(attachment))
+        .filter((assetId): assetId is string => Boolean(assetId))
+        .map((assetId) => viewsById.get(assetId))
+        .filter((asset) => asset !== undefined),
+    [editorStoredPerson, viewsById],
+  );
+  const warnings = useMemo(() => {
+    const treeWarnings = snapshot ? validateFamilyTree(snapshot) : [];
+    return mediaError
+      ? [
+          ...treeWarnings,
+          "I media locali non sono disponibili in questo browser.",
+        ]
+      : treeWarnings;
+  }, [mediaError, snapshot]);
+  const isEditorOpen =
+    isAdmin && editorState !== null && editorPerson !== null;
   const isPersonModalOpen = selectedPerson !== null && !isEditorOpen;
+
+  useEffect(() => {
+    if (
+      !snapshot ||
+      needsArchiveSetup ||
+      didMigrateDemoMediaRef.current
+    ) {
+      return;
+    }
+
+    didMigrateDemoMediaRef.current = true;
+    if (hasCompletedDemoMediaMigration()) {
+      return;
+    }
+
+    const migratedSnapshot = addMissingDemoMediaReferences(snapshot);
+    if (migratedSnapshot !== snapshot) {
+      replaceSnapshot(migratedSnapshot);
+    }
+    markDemoMediaMigrationComplete();
+  }, [needsArchiveSetup, replaceSnapshot, snapshot]);
+
+  useEffect(() => {
+    if (
+      !snapshot ||
+      needsArchiveSetup ||
+      !isMediaReady ||
+      mediaError
+    ) {
+      return;
+    }
+
+    const referencedAssetIds = snapshot.people.flatMap(
+      getPersonMediaAssetIds,
+    );
+    void ensureDemoAssets(referencedAssetIds).catch((error: unknown) => {
+      console.error("Unable to seed local demo media.", error);
+    });
+  }, [
+    ensureDemoAssets,
+    isMediaReady,
+    mediaError,
+    needsArchiveSetup,
+    snapshot,
+  ]);
 
   useEffect(() => {
     if (!snapshot) {
       return;
     }
 
-    if (selectedPersonId && !snapshot.people.some((person) => person.id === selectedPersonId)) {
+    if (
+      selectedPersonId &&
+      !snapshot.people.some((person) => person.id === selectedPersonId)
+    ) {
       setSelectedPersonId(null);
     }
 
@@ -174,32 +368,169 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
     });
   };
 
-  const handleSavePerson = (draft: PersonRecord) => {
-    const nextPerson = {
-      ...draft,
-      id: draft.id || createPersonId(),
-    };
-    const savedSnapshot = upsertPerson(nextPerson);
+  const handleSavePerson = async (
+    draft: PersonRecord,
+    mediaChanges: PersonMediaChanges,
+  ) => {
+    const personId = draft.id || createPersonId();
+    let previousAssets: MediaAssetRecord[] | null = null;
 
-    if (savedSnapshot) {
+    try {
+      const existingPerson = storedPeopleById.get(personId);
+      previousAssets = await refreshAssets();
+      const removedAssetIds = new Set(mediaChanges.removedMediaIds);
+      const existingPhotoAssetId = parseMediaAssetReference(
+        existingPerson?.photo,
+      );
+
+      if (
+        existingPhotoAssetId &&
+        (mediaChanges.removePhoto || mediaChanges.photoFile)
+      ) {
+        removedAssetIds.add(existingPhotoAssetId);
+      }
+
+      let photo = existingPerson?.photo ?? draft.photo;
+      const newAssets = [];
+
+      if (mediaChanges.removePhoto) {
+        photo = null;
+      } else if (mediaChanges.photoFile) {
+        const photoAsset = createAssetFromFile(
+          personId,
+          "photo",
+          mediaChanges.photoFile,
+        );
+        newAssets.push(photoAsset);
+        photo = createMediaAssetReference(photoAsset.id);
+      }
+
+      const existingAttachmentAssetIds = (
+        existingPerson?.attachments ?? []
+      )
+        .map((attachment) => parseMediaAssetReference(attachment))
+        .filter((assetId): assetId is string => Boolean(assetId))
+        .filter((assetId) => !removedAssetIds.has(assetId));
+      const newAttachmentAssets = mediaChanges.mediaFiles.map((file) =>
+        createAssetFromFile(personId, "attachment", file),
+      );
+      newAssets.push(...newAttachmentAssets);
+
+      const legacyAttachments =
+        draft.attachments?.filter(
+          (attachment) => !parseMediaAssetReference(attachment),
+        ) ?? [];
+      const attachments = [
+        ...legacyAttachments,
+        ...existingAttachmentAssetIds.map(createMediaAssetReference),
+        ...newAttachmentAssets.map((asset) =>
+          createMediaAssetReference(asset.id),
+        ),
+      ];
+      const nextAssets = previousAssets
+        .filter(
+          (asset) =>
+            asset.personId !== personId ||
+            !removedAssetIds.has(asset.id),
+        )
+        .concat(newAssets);
+      const nextPerson: PersonRecord = {
+        ...draft,
+        id: personId,
+        photo,
+        attachments: attachments.length > 0 ? attachments : null,
+      };
+
+      await replaceAssets(nextAssets);
+      const savedSnapshot = upsertPerson(nextPerson);
+
+      if (!savedSnapshot) {
+        throw new Error("Lo snapshot dell’archivio non è disponibile.");
+      }
+
       setSelectedPersonId(nextPerson.id);
       setEditorState(null);
+    } catch (error) {
+      if (previousAssets) {
+        await replaceAssets(previousAssets).catch(() => undefined);
+      }
+      showSaveError(error);
     }
   };
 
-  const handleDeletePerson = (personId: string) => {
-    const savedSnapshot = deletePerson(personId);
-    if (savedSnapshot) {
+
+  const handleDeletePerson = async (personId: string) => {
+    const previousAssets = await refreshAssets();
+    const nextAssets = previousAssets.filter(
+      (asset) => asset.personId !== personId,
+    );
+
+    try {
+      await replaceAssets(nextAssets);
+      const savedSnapshot = deletePerson(personId);
+      if (!savedSnapshot) {
+        throw new Error("Lo snapshot dell’archivio non è disponibile.");
+      }
+
       setSelectedPersonId(null);
       setEditorState(null);
+    } catch (error) {
+      await replaceAssets(previousAssets).catch(() => undefined);
+      showSaveError(error);
     }
   };
 
-  const handleResetDemo = () => {
-    resetDemoData();
+  const handleExportArchive = async () => {
+    const referencedAssetIds = snapshot.people.flatMap(
+      getPersonMediaAssetIds,
+    );
+    const currentAssets = await ensureDemoAssets(referencedAssetIds);
+    const archiveBlob = await exportAlberoPackage(snapshot, currentAssets);
+    const downloadUrl = URL.createObjectURL(archiveBlob);
+    const link = document.createElement("a");
+
+    link.download = createArchiveFileName(
+      snapshot.metadata.familyName,
+    );
+    link.href = downloadUrl;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 60_000);
+  };
+
+  const handleImportArchive = async (file: File) => {
+    const imported = await importAlberoPackage(file);
+    const confirmed = window.confirm(
+      `Importare “${file.name}”? L’archivio corrente sarà sostituito con ${imported.snapshot.people.length} persone e ${imported.assets.length} file multimediali.`,
+    );
+
+    if (!confirmed) {
+      return false;
+    }
+
+    const previousSnapshot = snapshot;
+    const previousAssets = await refreshAssets();
+
+    try {
+      await replaceAssets(imported.assets);
+      replaceSnapshot(imported.snapshot);
+      markDemoMediaMigrationComplete();
+      didMigrateDemoMediaRef.current = true;
+    } catch (error) {
+      await replaceAssets(previousAssets).catch(() => undefined);
+      try {
+        replaceSnapshot(previousSnapshot);
+      } catch {
+        // Preserve the original import error after the best-effort rollback.
+      }
+      throw error;
+    }
+
     setQuery("");
     setSelectedPersonId(null);
     setEditorState(null);
+    return true;
   };
 
   return (
@@ -216,11 +547,15 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
         <ArchiveActions
           mode={mode}
           onCreatePerson={handleCreatePerson}
+          onExportArchive={handleExportArchive}
+          onImportArchive={handleImportArchive}
           onQueryChange={setQuery}
-          onResetDemoData={handleResetDemo}
           query={query}
         />
-        <nav aria-label="Visualizzazioni archivio" className="archive-view-navigation">
+        <nav
+          aria-label="Visualizzazioni archivio"
+          className="archive-view-navigation"
+        >
           <div className="archive-view-tabs" role="tablist">
             {viewOptions.map((currentView) => (
               <button
@@ -264,18 +599,22 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
         {view === "diagram" ? (
           <TreeDiagramView
             onSelectPerson={handleSelectPerson}
-            people={snapshot.people}
+            people={displayPeople}
             query={deferredQuery}
             selectedPersonId={selectedPersonId}
           />
         ) : null}
         {view === "table" ? (
-          <PeopleTable onSelectPerson={handleSelectPerson} people={snapshot.people} query={query} />
+          <PeopleTable
+            onSelectPerson={handleSelectPerson}
+            people={displayPeople}
+            query={query}
+          />
         ) : null}
         {view === "timeline" ? (
           <TimelineView
             onSelectPerson={handleSelectPerson}
-            people={snapshot.people}
+            people={displayPeople}
             query={deferredQuery}
           />
         ) : null}
@@ -283,19 +622,28 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
 
       {isPersonModalOpen ? (
         <PersonModal
+          media={selectedMedia}
           onClose={() => setSelectedPersonId(null)}
-          onEdit={isAdmin && selectedPerson ? handleEditPerson : undefined}
+          onEdit={
+            isAdmin && selectedPerson ? handleEditPerson : undefined
+          }
           peopleById={peopleById}
           person={selectedPerson}
         />
       ) : null}
       {isEditorOpen ? (
         <PersonEditorModal
+          existingMedia={editorMedia}
+          existingPhoto={editorPhoto}
           mode={editorState.mode}
           onClose={() => setEditorState(null)}
-          onDelete={editorState.mode === "edit" ? handleDeletePerson : undefined}
+          onDelete={
+            editorState.mode === "edit"
+              ? handleDeletePerson
+              : undefined
+          }
           onSave={handleSavePerson}
-          people={snapshot.people}
+          people={people}
           person={editorPerson}
         />
       ) : null}

@@ -3,7 +3,10 @@
 
 import { useId, useRef } from "react";
 
+import { PersonMediaGallery } from "@/components/PersonMediaGallery";
 import { useDialogFocus } from "@/hooks/useDialogFocus";
+import type { MediaAssetView } from "@/hooks/useMediaLibrary";
+import { parseMediaAssetReference } from "@/models/MediaAsset";
 import type { PersonRecord } from "@/models/Person";
 import {
   formatDateLabel,
@@ -15,6 +18,7 @@ import {
 interface PersonModalProps {
   person: PersonRecord | null;
   peopleById: Map<string, PersonRecord>;
+  media?: readonly MediaAssetView[];
   onClose: () => void;
   onEdit?: (personId: string) => void;
 }
@@ -31,7 +35,13 @@ function renderPeopleList(ids: string[], peopleById: Map<string, PersonRecord>):
     .join(", ");
 }
 
-export function PersonModal({ person, peopleById, onClose, onEdit }: PersonModalProps) {
+export function PersonModal({
+  person,
+  peopleById,
+  media = [],
+  onClose,
+  onEdit,
+}: PersonModalProps) {
   const titleId = useId();
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const dialogRef = useDialogFocus<HTMLDivElement>(Boolean(person), onClose, closeButtonRef);
@@ -41,6 +51,10 @@ export function PersonModal({ person, peopleById, onClose, onEdit }: PersonModal
   }
 
   const title = getPersonDisplayName(person);
+  const legacyAttachments =
+    person.attachments?.filter(
+      (attachment) => !parseMediaAssetReference(attachment),
+    ) ?? [];
 
   return (
     <div
@@ -190,10 +204,13 @@ export function PersonModal({ person, peopleById, onClose, onEdit }: PersonModal
               <div>
                 <h3 className="text-sm font-semibold text-slate-900">Allegati</h3>
                 <p className="mt-1 text-sm text-slate-700">
-                  {person.attachments?.join(", ") ?? "Nessun allegato."}
+                  {legacyAttachments.length > 0
+                    ? legacyAttachments.join(", ")
+                    : "Nessun allegato testuale."}
                 </p>
               </div>
             </div>
+            <PersonMediaGallery media={media} />
           </section>
         </div>
       </div>

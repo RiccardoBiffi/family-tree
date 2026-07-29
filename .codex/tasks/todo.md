@@ -63,7 +63,69 @@
   `missing` status. Stored snapshots, including `people: []`, return `stored`.
 - First submit persists the trimmed family name, derived archive title, and an
   empty people list; remounting renders the persisted title without onboarding.
-- Malformed JSON still recovers to the Rinaldi demo, and `Ripristina demo`
-  continues to persist the same seed archive.
+- Malformed JSON still recovers to the Rinaldi demo; the former reset control is
+  now superseded by the portable archive menu.
 - Verification: targeted onboarding/storage tests 11/11, full suite 19/19,
   `npm run lint`, `npx tsc --noEmit`, and `TMPDIR=/tmp npm run build` pass.
+
+# Local media and portable archive
+
+- [x] Define a versioned local-media model and compressed `.albero` contract.
+- [x] Generate and persist original demo portraits and multimedia assets locally.
+- [x] Store uploaded binary media in IndexedDB and resolve safe object URLs for display.
+- [x] Add local photo/media controls to the person editor and fix comma entry for tags.
+- [x] Replace the reset toolbar button with an accessible import/export archive menu.
+- [x] Export snapshot plus every media blob into one compressed file.
+- [x] Import one archive file transactionally and restore all data and media.
+- [x] Add unit coverage for archive encoding, validation, tag entry, and media metadata.
+- [x] Run fresh builder/critic rounds on storage, archive, and UI flows.
+- [x] Verify export -> clear -> import -> reload in real browsers on desktop and mobile.
+
+## Local media review
+
+- The demo now includes ten generated local WebP portraits and ten distinct WAV
+  sound postcards. The seed stores stable `media:` references, while IndexedDB
+  owns the binary Blobs and the UI resolves only short-lived object URLs.
+- The admin archive icon opens one accessible menu for export/import. `.albero`
+  is a versioned gzip package containing the unchanged v1 snapshot and every
+  referenced media asset; import validates closure before transactional replace.
+- Editor tags preserve literal commas until submit. External image URLs are no
+  longer editable, the file inputs expose an exact MIME allowlist, and invalid
+  files fail inside the atomic rollback boundary without losing the draft.
+- A separate versioned localStorage marker makes the legacy demo migration truly
+  one-shot without changing snapshot v1: deliberate media removals and imports
+  remain unchanged after remount.
+- Fresh builder/critic rounds closed package closure, toolbar stacking, local-only
+  editing, invalid-file rollback, and migration lifecycle gaps. Final verdict: WIN
+  with no remaining P0/P1/P2.
+- Browser proof exported an actual downloaded `.albero`, compared it byte-for-byte
+  with the generated Blob, cleared localStorage and IndexedDB, imported, reloaded,
+  and recovered 21 assets (2,508,450 bytes) with identical SHA-256 inventories.
+- At 390x844 the page has zero horizontal overflow, the archive trigger is 44x44,
+  its menu remains topmost, Escape restores focus, and visitor mode hides it.
+- Verification: 12 files and 45 tests pass; TypeScript, lint, diff-check, and the
+  production build pass; axe found zero serious or critical findings in four
+  principal surfaces; final browser console errors: zero.
+
+### Media/archive domain subtask
+
+- [x] Add a versioned `MediaAssetRecord` model with safe MIME/size validation.
+- [x] Add an IndexedDB-backed `MediaDB` with atomic `replaceAll`.
+- [x] Add gzip `.albero` export/import with complete snapshot and base64 blobs.
+- [x] Reject malformed compression/JSON, wrong format/version, unsafe media, and invalid snapshots.
+- [x] Preserve `family-tree.snapshot.v1` and the existing `FamilyTreeSnapshot` shape.
+- [x] Add focused model, IndexedDB, and archive round-trip/rejection tests.
+- [x] Run targeted tests, lint, typecheck, and record exact results below.
+
+#### Media/archive domain review
+
+- Added a v1 Blob-backed media record with stable `media:` references, a
+  conservative MIME allowlist, and canonical metadata plus per-file size checks.
+- `MediaDB` stores records in IndexedDB and performs clear-plus-put replacement
+  in one read/write transaction after validating the complete replacement set.
+- `.albero` export/import uses browser-native gzip streams, bounded compressed
+  and expanded reads, complete snapshot validation, and lossless base64 blobs.
+- The existing `family-tree.snapshot.v1` key and `FamilyTreeSnapshot` schema
+  were not changed.
+- Verification: focused domain tests and the final full project checks pass;
+  package references and media assets are closed in both directions.

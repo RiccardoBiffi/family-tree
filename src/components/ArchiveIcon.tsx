@@ -1,4 +1,4 @@
-type ArchiveIconName = "diagram" | "plus" | "reset" | "search" | "table" | "timeline";
+type ArchiveIconName = "archive" | "diagram" | "plus" | "search" | "table" | "timeline";
 
 interface ArchiveIconProps {
   className?: string;
@@ -46,10 +46,10 @@ export function ArchiveIcon({ className, name }: ArchiveIconProps) {
         </>
       ) : null}
       {name === "plus" ? <path d="M12 5v14M5 12h14" /> : null}
-      {name === "reset" ? (
+      {name === "archive" ? (
         <>
-          <path d="M5.25 8.5H9v-3.75" />
-          <path d="M6.1 17.2A8 8 0 1 0 5.25 8.5" />
+          <path d="M4.5 8h15v11h-15z" />
+          <path d="M3.5 5h17v3h-17zM9 12h6" />
         </>
       ) : null}
     </svg>
