@@ -49,6 +49,10 @@ import { FAMILY_TREE_STORAGE_KEY } from "@/models/FamilyTree";
 
 describe("FamilyTreeApp", () => {
   beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(new Uint8Array([0]), { status: 200 })),
+    );
     window.localStorage.clear();
     window.localStorage.setItem(
       FAMILY_TREE_STORAGE_KEY,
@@ -294,8 +298,17 @@ describe("FamilyTreeApp", () => {
     const { unmount } = render(<FamilyTreeApp mode="visitor" />);
 
     expect(await screen.findByText("Archivio Rinaldi")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Gestisci archivio" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Nuova persona" }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
     expect(screen.queryByText(/sola lettura|visitatore|amministrazione/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Archiviazione temporanea"),
+    ).not.toBeInTheDocument();
 
     unmount();
     render(<FamilyTreeApp mode="admin" />);
@@ -303,6 +316,12 @@ describe("FamilyTreeApp", () => {
     expect(await screen.findByRole("button", { name: "Nuova persona" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Gestisci archivio" })).toBeInTheDocument();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Archiviazione temporanea"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/esporta subito un file \.albero/u),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/visitatore|modalità admin|amministrazione/i)).not.toBeInTheDocument();
   });
 });

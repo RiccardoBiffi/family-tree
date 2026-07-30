@@ -190,3 +190,70 @@
   visible targets, zero page overflow, and zero serious/critical axe findings.
 - A fresh source-and-render critic returned `WIN`. Its only remaining note is
   non-blocking native file-picker truncation on mobile.
+
+# Single-file offline release
+
+- [x] Add a dedicated Vite entry that reuses the production UI and defaults to visitor.
+- [x] Enable admin only for the exact `?admin` query parameter with no visible switch.
+- [x] Inline all JavaScript, CSS, and the 20 tracked demo-media assets into one HTML.
+- [x] Preserve Next development and the web `/` and `/admin` routes.
+- [x] Add durable/volatile persistence capability handling without changing snapshot v1 or `.albero`.
+- [x] Add deterministic build, structural verification, browser verification, and release scripts.
+- [x] Prove the artifact works through `file://` with networking disabled on desktop and mobile.
+- [x] Verify visitor/admin boundaries, reload persistence, media, and `.albero` recovery.
+- [x] Pass unit tests, lint, typecheck, Next build, offline build, and a fresh critic audit.
+
+## Offline release review
+
+- `npm run build` now emits only `dist-offline/archivio-famiglia.html`.
+  The final artifact is 3,687,264 bytes, embeds 20 demo media, contains no
+  external script/stylesheet/media references, and has SHA-256
+  `1ba172dc9bf4438f07784087ad87d874e166a907aa2e1a63892e8ac115611abb`.
+- The standalone entry uses visitor by default and admin only when the exact
+  `admin` query key is present (`?admin` and `?admin=`); unrelated queries
+  remain visitor and no mode-switch UI is rendered.
+- Snapshot and media persistence expose `durable | volatile`. Security,
+  availability, blocked-open, and quota failures fall back to session memory;
+  unexpected data/transaction errors still surface. Admin receives the
+  `.albero` export warning while visitor remains free of mode-status copy.
+- Browser acceptance runs with Chromium networking disabled at 1440x900 and
+  390x844. It covers onboarding, all views, route boundaries, CRUD, reciprocal
+  parent saving, image/audio/video/PDF, reload durability, deletion, `.albero`
+  import/export with equal media hashes, 20 embedded demo media, volatile
+  export and recovery into a fresh durable context, zero non-local requests,
+  zero runtime errors, zero horizontal overflow, and zero serious/critical axe
+  findings.
+- The fresh critic's largest gap was packaged-runtime volatile recovery. The
+  new E2E exposed and closed one real direct-localStorage crash in the demo
+  migration marker, then proved the complete recovery path.
+- Final `npm run release` passes: ESLint, TypeScript, 60/60 tests, Next static
+  routes `/`, `/admin`, and `/progress`, standalone build, structural checks,
+  and both offline browser suites.
+
+# Visitor archive transfer and main publication
+
+- [x] Expose `Gestisci archivio`, export, import, progress, and feedback in visitor mode.
+- [x] Keep new-person, edit, and delete actions admin-only.
+- [x] Prove visitor export/import through the real `.albero` package path.
+- [x] Update unit and offline browser acceptance tests for the new capability boundary.
+- [x] Keep generated release artifacts out of source control.
+- [x] Run the complete release pipeline and a fresh critic audit.
+- [x] Commit the complete coherent implementation and push `main`.
+
+## Visitor archive transfer review
+
+- Visitor and admin share the accessible `Gestisci archivio` menu, its
+  progress/feedback states, and the `.albero` file input. `Nuova persona`,
+  editing, and deletion remain admin-only.
+- The packaged desktop browser flow exports as visitor, deletes a related
+  person as admin, imports as visitor, and verifies restored data,
+  relationships, media inventory, and SHA-256 hashes.
+- Desktop 1440x900 and mobile 390x844 expose 44px targets with no horizontal
+  overflow, external requests, console errors, mode switch, or serious/critical
+  axe findings.
+- The full `npm run release` pipeline passes: lint, TypeScript, 60/60 tests,
+  Next routes, single-file build, structural validation, and offline browser
+  acceptance.
+- A fresh read-only critic returned PASS with no material gap. The complete
+  transfer round-trip runs on desktop; mobile independently verifies the same
+  controls, target sizes, layout, and offline policy.

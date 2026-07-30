@@ -21,9 +21,22 @@ export interface MediaDBOptions {
 }
 
 export class MediaDBUnavailableError extends Error {
-  constructor(message = "IndexedDB is not available in this environment.") {
-    super(message);
+  constructor(
+    message = "IndexedDB is not available in this environment.",
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
     this.name = "MediaDBUnavailableError";
+  }
+}
+
+function getDefaultIndexedDB(): IDBFactory | null {
+  try {
+    return typeof globalThis.indexedDB === "undefined"
+      ? null
+      : globalThis.indexedDB;
+  } catch {
+    return null;
   }
 }
 
@@ -73,9 +86,7 @@ export class MediaDB {
     this.dbName = options.dbName?.trim() || MEDIA_DB_NAME;
     this.factory =
       options.indexedDB === undefined
-        ? typeof globalThis.indexedDB === "undefined"
-          ? null
-          : globalThis.indexedDB
+        ? getDefaultIndexedDB()
         : options.indexedDB;
     this.validation = options.validation;
   }
@@ -93,7 +104,16 @@ export class MediaDB {
       return this.databasePromise;
     }
 
-    const request = this.factory.open(this.dbName, MEDIA_DB_VERSION);
+    let request: IDBOpenDBRequest;
+    try {
+      request = this.factory.open(this.dbName, MEDIA_DB_VERSION);
+    } catch (error) {
+      return Promise.reject(
+        new MediaDBUnavailableError("Unable to open the media database.", {
+          cause: error,
+        }),
+      );
+    }
     const pending = new Promise<IDBDatabase>((resolve, reject) => {
       request.onupgradeneeded = () => {
         const database = request.result;
@@ -112,10 +132,19 @@ export class MediaDB {
         resolve(database);
       };
       request.onerror = () => {
-        reject(request.error ?? new Error("Unable to open the media database."));
+        reject(
+          new MediaDBUnavailableError(
+            "Unable to open the media database.",
+            request.error ? { cause: request.error } : undefined,
+          ),
+        );
       };
       request.onblocked = () => {
-        reject(new Error("Media database upgrade is blocked by another tab."));
+        reject(
+          new MediaDBUnavailableError(
+            "Media database upgrade is blocked by another tab.",
+          ),
+        );
       };
     });
 

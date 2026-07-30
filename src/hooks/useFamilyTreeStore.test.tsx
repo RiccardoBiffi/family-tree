@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { seedFamilyTree } from "@/data/seedFamilyTree";
 import { useFamilyTreeStore } from "@/hooks/useFamilyTreeStore";
@@ -124,5 +124,41 @@ describe("useFamilyTreeStore relationship persistence", () => {
     expect(findPerson(reloaded, "p5").childIds).not.toContain("p8");
     expect(findPerson(reloaded, "p10").parentIds).not.toContain("p8");
     expect(findPerson(reloaded, "p9").partnerIds).not.toContain("p8");
+  });
+
+  it("exposes volatile status while keeping archive edits usable in memory", async () => {
+    const getItem = vi
+      .spyOn(Storage.prototype, "getItem")
+      .mockImplementation(() => {
+        throw new DOMException("Access denied.", "SecurityError");
+      });
+    const { result } = renderHook(() => useFamilyTreeStore());
+
+    await waitFor(() => expect(result.current.isLoaded).toBe(true));
+    expect(result.current.persistenceStatus).toBe("volatile");
+    expect(result.current.needsArchiveSetup).toBe(true);
+
+    act(() => {
+      result.current.initializeArchive("Volatile");
+    });
+    expect(result.current.snapshot?.metadata.familyName).toBe("Volatile");
+
+    const person = seedFamilyTree.people[0];
+    act(() => {
+      result.current.upsertPerson({
+        ...person,
+        id: "volatile-person",
+        parentIds: [],
+        childIds: [],
+        partnerIds: [],
+      });
+    });
+
+    expect(result.current.snapshot?.people).toHaveLength(1);
+    expect(result.current.snapshot?.people[0].id).toBe("volatile-person");
+    expect(result.current.persistenceStatus).toBe("volatile");
+
+    getItem.mockRestore();
+    new LocalStorageDB().clear();
   });
 });

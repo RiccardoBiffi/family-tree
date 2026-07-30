@@ -169,13 +169,7 @@ export function ArchiveActions({
   };
 
   return (
-    <div
-      className={
-        isAdmin
-          ? "archive-actions archive-actions--admin relative"
-          : "archive-actions relative"
-      }
-    >
+    <div className="archive-actions archive-actions--admin relative">
       <label className="archive-search" htmlFor={searchInputId}>
         <span className="sr-only">Cerca una persona</span>
         <ArchiveIcon className="archive-search__icon" name="search" />
@@ -189,8 +183,8 @@ export function ArchiveActions({
         />
       </label>
 
-      {isAdmin ? (
-        <div aria-label="Azioni archivio" className="archive-admin-toolbar" role="toolbar">
+      <div aria-label="Azioni archivio" className="archive-admin-toolbar" role="toolbar">
+        {isAdmin ? (
           <button
             aria-label="Nuova persona"
             onClick={onCreatePerson}
@@ -200,41 +194,41 @@ export function ArchiveActions({
             <ArchiveIcon className="archive-action-icon" name="plus" />
             <span className="sr-only">Nuova persona</span>
           </button>
-          <button
-            aria-busy={isBusy}
-            aria-controls={menuId}
-            aria-describedby={feedback ? statusId : undefined}
-            aria-expanded={isMenuOpen}
-            aria-haspopup="menu"
-            aria-label="Gestisci archivio"
-            disabled={isBusy}
-            onClick={() => {
-              if (isMenuOpen) {
-                closeMenu();
-                return;
-              }
+        ) : null}
+        <button
+          aria-busy={isBusy}
+          aria-controls={menuId}
+          aria-describedby={feedback ? statusId : undefined}
+          aria-expanded={isMenuOpen}
+          aria-haspopup="menu"
+          aria-label="Gestisci archivio"
+          disabled={isBusy}
+          onClick={() => {
+            if (isMenuOpen) {
+              closeMenu();
+              return;
+            }
 
-              setFeedback(null);
-              setIsMenuOpen(true);
-            }}
-            ref={managementButtonRef}
-            title="Gestisci archivio"
-            type="button"
-          >
-            <ArchiveIcon
-              className={
-                isBusy
-                  ? "archive-action-icon animate-pulse"
-                  : "archive-action-icon"
-              }
-              name="archive"
-            />
-            <span className="sr-only">Gestisci archivio</span>
-          </button>
-        </div>
-      ) : null}
+            setFeedback(null);
+            setIsMenuOpen(true);
+          }}
+          ref={managementButtonRef}
+          title="Gestisci archivio"
+          type="button"
+        >
+          <ArchiveIcon
+            className={
+              isBusy
+                ? "archive-action-icon animate-pulse"
+                : "archive-action-icon"
+            }
+            name="archive"
+          />
+          <span className="sr-only">Gestisci archivio</span>
+        </button>
+      </div>
 
-      {isAdmin && isMenuOpen ? (
+      {isMenuOpen ? (
         <div
           aria-label="Gestione archivio"
           className="absolute right-0 top-full z-50 mt-2 w-56 rounded-xl border border-[#d5ddd5] bg-white p-2 shadow-[0_18px_48px_rgba(24,45,31,0.16)]"
@@ -268,26 +262,24 @@ export function ArchiveActions({
         </div>
       ) : null}
 
-      {isAdmin ? (
-        <input
-          accept=".albero"
-          aria-label="Seleziona archivio da importare"
-          className="sr-only"
-          onChange={(event) => {
-            const file = event.currentTarget.files?.[0];
-            event.currentTarget.value = "";
+      <input
+        accept=".albero"
+        aria-label="Seleziona archivio da importare"
+        className="sr-only"
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = "";
 
-            if (file) {
-              void runOperation("import", () => onImportArchive(file));
-            }
-          }}
-          ref={fileInputRef}
-          tabIndex={-1}
-          type="file"
-        />
-      ) : null}
+          if (file) {
+            void runOperation("import", () => onImportArchive(file));
+          }
+        }}
+        ref={fileInputRef}
+        tabIndex={-1}
+        type="file"
+      />
 
-      {isAdmin && feedback ? (
+      {feedback ? (
         <p
           aria-live="polite"
           className={[

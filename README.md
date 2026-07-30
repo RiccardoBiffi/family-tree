@@ -20,6 +20,53 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Rilascio standalone offline
+
+Il target di produzione predefinito è un unico file HTML autosufficiente:
+
+```bash
+npm run build
+```
+
+L’artefatto viene scritto in
+`dist-offline/archivio-famiglia.html`. Può essere aperto direttamente con un
+doppio clic, senza server e senza connessione Internet. JavaScript, CSS e i 20
+media demo sono incorporati nel file.
+
+- `archivio-famiglia.html` apre l’archivio in modalità visitatore.
+- `archivio-famiglia.html?admin` abilita la modalità amministratore.
+- Entrambe le modalità possono importare ed esportare l’archivio completo
+  tramite un unico file `.albero`.
+- Anche `?admin=` è valido; parametri diversi, come `?administrator`, non
+  abilitano l’amministrazione.
+- La UI non espone controlli per passare tra le due modalità.
+- Creazione, modifica ed eliminazione delle persone restano riservate all’admin.
+
+La build verifica che l’output contenga esattamente un file, non superi 8 MiB,
+non referenzi script, fogli di stile, media o source map esterni e includa tutti
+i media demo. Al termine stampa dimensione e SHA-256:
+
+```bash
+npm run verify:offline
+```
+
+Questo comando apre entrambe le modalità tramite `file://` in Chromium con il
+browser impostato offline, sia a 1440×900 sia a 390×844.
+
+La variante Next.js rimane disponibile separatamente:
+
+```bash
+npm run build:web
+npm run start:web
+```
+
+La pipeline completa di rilascio esegue lint, typecheck, test, build Next,
+build standalone e verifica browser:
+
+```bash
+npm run release
+```
+
 ## Stato locale e “senza dati”
 
 L’app considera un avvio **senza dati** soltanto quando nel browser non esiste
@@ -31,8 +78,7 @@ inizializzato: al ricaricamento non viene mostrata di nuovo la configurazione.
 Gli snapshot v1 esistenti continuano a essere letti con la stessa chiave e lo
 stesso schema, perché `familyName` era già parte dei metadati. Un payload non
 decodificabile mantiene il comportamento di recupero precedente caricando i
-dati demo Rinaldi; in modalità amministratore, **Ripristina demo** continua a
-sostituire esplicitamente l’archivio corrente con gli stessi dati di esempio.
+dati demo Rinaldi.
 
 ## Learn More
 

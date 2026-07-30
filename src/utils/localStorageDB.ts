@@ -5,11 +5,18 @@ import {
   type FamilyTreeSnapshot,
 } from "@/models/FamilyTree";
 import { normalizeFamilyTree } from "@/utils/familyTree";
+import {
+  isPersistenceCapabilityError,
+  type PersistenceStatus,
+} from "@/utils/persistence";
 
 export interface FamilyTreeLoadResult {
   snapshot: FamilyTreeSnapshot;
   status: "missing" | "stored" | "demo-fallback";
+  persistenceStatus: PersistenceStatus;
 }
+
+const volatileSnapshots = new Map<string, string>();
 
 function createUninitializedArchive(): FamilyTreeSnapshot {
   return {
@@ -28,12 +35,41 @@ function createUninitializedArchive(): FamilyTreeSnapshot {
 export class LocalStorageDB {
   readonly storageKey: string;
 
+  private persistenceStatus: PersistenceStatus = "durable";
+
   constructor(storageKey = FAMILY_TREE_STORAGE_KEY) {
     this.storageKey = storageKey;
   }
 
+  private getStorage(): Storage | null {
+    if (this.persistenceStatus === "volatile") {
+      return null;
+    }
+
+    if (typeof window === "undefined") {
+      this.persistenceStatus = "volatile";
+      return null;
+    }
+
+    try {
+      return window.localStorage;
+    } catch (error) {
+      if (!isPersistenceCapabilityError(error)) {
+        throw error;
+      }
+
+      this.persistenceStatus = "volatile";
+      return null;
+    }
+  }
+
+  getPersistenceStatus(): PersistenceStatus {
+    this.getStorage();
+    return this.persistenceStatus;
+  }
+
   isAvailable(): boolean {
-    return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+    return this.getStorage() !== null;
   }
 
   load(): FamilyTreeSnapshot {
@@ -41,19 +77,29 @@ export class LocalStorageDB {
   }
 
   loadWithStatus(): FamilyTreeLoadResult {
-    if (!this.isAvailable()) {
-      return {
-        snapshot: normalizeFamilyTree(seedFamilyTree),
-        status: "demo-fallback",
-      };
-    }
+    const storage = this.getStorage();
+    let storedValue: string | null;
 
-    const storedValue = window.localStorage.getItem(this.storageKey);
+    if (!storage) {
+      storedValue = volatileSnapshots.get(this.storageKey) ?? null;
+    } else {
+      try {
+        storedValue = storage.getItem(this.storageKey);
+      } catch (error) {
+        if (!isPersistenceCapabilityError(error)) {
+          throw error;
+        }
+
+        this.persistenceStatus = "volatile";
+        storedValue = volatileSnapshots.get(this.storageKey) ?? null;
+      }
+    }
 
     if (storedValue === null) {
       return {
         snapshot: createUninitializedArchive(),
         status: "missing",
+        persistenceStatus: this.persistenceStatus,
       };
     }
 
@@ -61,6 +107,7 @@ export class LocalStorageDB {
       return {
         snapshot: normalizeFamilyTree(JSON.parse(storedValue) as FamilyTreeSnapshot),
         status: "stored",
+        persistenceStatus: this.persistenceStatus,
       };
     } catch {
       const seeded = normalizeFamilyTree(seedFamilyTree);
@@ -68,6 +115,7 @@ export class LocalStorageDB {
       return {
         snapshot: seeded,
         status: "demo-fallback",
+        persistenceStatus: this.persistenceStatus,
       };
     }
   }
@@ -81,8 +129,23 @@ export class LocalStorageDB {
       },
     });
 
-    if (this.isAvailable()) {
-      window.localStorage.setItem(this.storageKey, JSON.stringify(normalized));
+    const serialized = JSON.stringify(normalized);
+    const storage = this.getStorage();
+
+    if (!storage) {
+      volatileSnapshots.set(this.storageKey, serialized);
+      return normalized;
+    }
+
+    try {
+      storage.setItem(this.storageKey, serialized);
+    } catch (error) {
+      if (!isPersistenceCapabilityError(error)) {
+        throw error;
+      }
+
+      this.persistenceStatus = "volatile";
+      volatileSnapshots.set(this.storageKey, serialized);
     }
 
     return normalized;
@@ -97,10 +160,21 @@ export class LocalStorageDB {
   }
 
   clear(): void {
-    if (!this.isAvailable()) {
+    volatileSnapshots.delete(this.storageKey);
+    const storage = this.getStorage();
+
+    if (!storage) {
       return;
     }
 
-    window.localStorage.removeItem(this.storageKey);
+    try {
+      storage.removeItem(this.storageKey);
+    } catch (error) {
+      if (!isPersistenceCapabilityError(error)) {
+        throw error;
+      }
+
+      this.persistenceStatus = "volatile";
+    }
   }
 }

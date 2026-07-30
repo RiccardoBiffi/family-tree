@@ -4,7 +4,9 @@
 /.codex
 
 # media
-/public
+/public/*
+!/public/demo-media/
+!/public/demo-media/**
 
 # dependencies
 /node_modules
@@ -25,6 +27,8 @@
 
 # production
 /build
+/dist-offline
+/artifacts
 
 # misc
 .DS_Store

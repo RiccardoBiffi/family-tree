@@ -256,4 +256,68 @@ describe("MediaDB", () => {
     expect(db.isAvailable()).toBe(false);
     await expect(db.list()).rejects.toBeInstanceOf(MediaDBUnavailableError);
   });
+
+  it("does not throw when the global IndexedDB getter is denied", async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(
+      globalThis,
+      "indexedDB",
+    );
+    Object.defineProperty(globalThis, "indexedDB", {
+      configurable: true,
+      get() {
+        throw new DOMException("Access denied.", "SecurityError");
+      },
+    });
+
+    try {
+      const db = new MediaDB();
+      expect(db.isAvailable()).toBe(false);
+      await expect(db.list()).rejects.toBeInstanceOf(
+        MediaDBUnavailableError,
+      );
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(globalThis, "indexedDB", descriptor);
+      } else {
+        Reflect.deleteProperty(globalThis, "indexedDB");
+      }
+    }
+  });
+
+  it("wraps only database-open failures as unavailable", async () => {
+    const deniedFactory = {
+      open() {
+        throw new DOMException("Access denied.", "SecurityError");
+      },
+    } as unknown as IDBFactory;
+    const db = new MediaDB({ indexedDB: deniedFactory });
+
+    await expect(db.list()).rejects.toBeInstanceOf(MediaDBUnavailableError);
+
+    const transactionFailure = new DOMException(
+      "Transaction failed.",
+      "UnknownError",
+    );
+    const database = {
+      objectStoreNames: {
+        contains: () => true,
+      },
+      transaction() {
+        throw transactionFailure;
+      },
+      close() {},
+    } as unknown as IDBDatabase;
+    const request = new FakeOpenRequest();
+    const transactionFactory = {
+      open() {
+        queueMicrotask(() => {
+          request.succeed(database);
+        });
+        return request as unknown as IDBOpenDBRequest;
+      },
+    } as unknown as IDBFactory;
+    const transactionDb = new MediaDB({ indexedDB: transactionFactory });
+
+    await expect(transactionDb.list()).rejects.toBe(transactionFailure);
+  });
 });

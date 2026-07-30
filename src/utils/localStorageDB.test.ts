@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { seedFamilyTree } from "@/data/seedFamilyTree";
 import { FAMILY_TREE_VERSION } from "@/models/FamilyTree";
@@ -128,5 +128,59 @@ describe("LocalStorageDB", () => {
     expect(mario?.partnerIds).toContain("p2");
     expect(giulia?.parentIds).toContain("p1");
     expect(giulia?.partnerIds).toContain("p1");
+  });
+
+  it("falls back to session memory when localStorage access is denied", () => {
+    const storageKey = "family-tree.test.security-fallback";
+    const getItem = vi
+      .spyOn(Storage.prototype, "getItem")
+      .mockImplementation(() => {
+        throw new DOMException("Access denied.", "SecurityError");
+      });
+    const db = new LocalStorageDB(storageKey);
+
+    const initial = db.loadWithStatus();
+    expect(initial.status).toBe("missing");
+    expect(initial.persistenceStatus).toBe("volatile");
+
+    const saved = db.save(seedFamilyTree);
+    expect(db.getPersistenceStatus()).toBe("volatile");
+    expect(db.load()).toEqual(saved);
+
+    getItem.mockRestore();
+    db.clear();
+  });
+
+  it("keeps a quota-exhausted write operational in volatile memory", () => {
+    const storageKey = "family-tree.test.quota-fallback";
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementationOnce(() => {
+        throw new DOMException("Storage is full.", "QuotaExceededError");
+      });
+    const db = new LocalStorageDB(storageKey);
+
+    const saved = db.save(seedFamilyTree);
+
+    expect(db.getPersistenceStatus()).toBe("volatile");
+    expect(db.load()).toEqual(saved);
+
+    setItem.mockRestore();
+    db.clear();
+  });
+
+  it("propagates unexpected writes without switching to volatile mode", () => {
+    const storageKey = "family-tree.test.unexpected-write";
+    const setItem = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementationOnce(() => {
+        throw new DOMException("Unexpected failure.", "UnknownError");
+      });
+    const db = new LocalStorageDB(storageKey);
+
+    expect(() => db.save(seedFamilyTree)).toThrow("Unexpected failure.");
+    expect(db.getPersistenceStatus()).toBe("durable");
+
+    setItem.mockRestore();
   });
 });

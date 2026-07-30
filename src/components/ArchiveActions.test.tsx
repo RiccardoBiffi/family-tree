@@ -197,20 +197,49 @@ describe("ArchiveActions archive management", () => {
     expect(status).toHaveAttribute("data-tone", "success");
   });
 
-  it("keeps archive management unavailable in visitor mode", () => {
-    renderArchiveActions({ mode: "visitor" });
+  it("lets visitors export and import without exposing person creation", async () => {
+    const user = userEvent.setup();
+    const onCreatePerson = vi.fn();
+    const onExportArchive = vi.fn().mockResolvedValue(undefined);
+    const onImportArchive = vi.fn().mockResolvedValue(undefined);
+
+    renderArchiveActions({
+      mode: "visitor",
+      onCreatePerson,
+      onExportArchive,
+      onImportArchive,
+    });
 
     expect(
       screen.getByRole("searchbox", { name: "Cerca una persona" }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Gestisci archivio" }),
-    ).not.toBeInTheDocument();
-    expect(
       screen.queryByRole("button", { name: "Nuova persona" }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByLabelText("Seleziona archivio da importare"),
-    ).not.toBeInTheDocument();
+
+    const trigger = screen.getByRole("button", { name: "Gestisci archivio" });
+    const fileInput = screen.getByLabelText(
+      "Seleziona archivio da importare",
+    ) as HTMLInputElement;
+    const archiveFile = new File(["archivio"], "famiglia.albero", {
+      type: "application/octet-stream",
+    });
+
+    await user.click(trigger);
+    await user.click(
+      screen.getByRole("menuitem", { name: "Esporta archivio" }),
+    );
+    await waitFor(() => expect(onExportArchive).toHaveBeenCalledOnce());
+
+    await user.click(trigger);
+    await user.click(
+      screen.getByRole("menuitem", { name: "Importa archivio" }),
+    );
+    await user.upload(fileInput, archiveFile);
+
+    await waitFor(() => {
+      expect(onImportArchive).toHaveBeenCalledWith(archiveFile);
+    });
+    expect(onCreatePerson).not.toHaveBeenCalled();
   });
 });

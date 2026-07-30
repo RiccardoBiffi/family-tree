@@ -1,5 +1,6 @@
 import type { FamilyTreeSnapshot } from "@/models/FamilyTree";
 import { parseMediaAssetReference } from "@/models/MediaAsset";
+import { isPersistenceCapabilityError } from "@/utils/persistence";
 
 export const DEMO_MEDIA_MIGRATION_STORAGE_KEY =
   "family-tree.migration.demo-media-references.v1";
@@ -18,28 +19,58 @@ const demoIdentityByPersonId = new Map([
 ]);
 
 function getLocalStorage(): Storage | null {
-  if (
-    typeof window === "undefined" ||
-    typeof window.localStorage === "undefined"
-  ) {
+  if (typeof window === "undefined") {
     return null;
   }
 
-  return window.localStorage;
+  try {
+    return typeof window.localStorage === "undefined"
+      ? null
+      : window.localStorage;
+  } catch (error) {
+    if (!isPersistenceCapabilityError(error)) {
+      throw error;
+    }
+
+    return null;
+  }
 }
 
 export function hasCompletedDemoMediaMigration(): boolean {
-  return (
-    getLocalStorage()?.getItem(DEMO_MEDIA_MIGRATION_STORAGE_KEY) ===
-    "complete"
-  );
+  const storage = getLocalStorage();
+  if (!storage) {
+    return false;
+  }
+
+  try {
+    return (
+      storage.getItem(DEMO_MEDIA_MIGRATION_STORAGE_KEY) === "complete"
+    );
+  } catch (error) {
+    if (!isPersistenceCapabilityError(error)) {
+      throw error;
+    }
+
+    return false;
+  }
 }
 
 export function markDemoMediaMigrationComplete(): void {
-  getLocalStorage()?.setItem(
-    DEMO_MEDIA_MIGRATION_STORAGE_KEY,
-    "complete",
-  );
+  const storage = getLocalStorage();
+  if (!storage) {
+    return;
+  }
+
+  try {
+    storage.setItem(
+      DEMO_MEDIA_MIGRATION_STORAGE_KEY,
+      "complete",
+    );
+  } catch (error) {
+    if (!isPersistenceCapabilityError(error)) {
+      throw error;
+    }
+  }
 }
 
 export function addMissingDemoMediaReferences(

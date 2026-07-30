@@ -12,3 +12,6 @@
 - Replacing a text modal-close button with an icon must preserve a 44px explicit dismiss target, accessible naming, focus restoration, Escape/backdrop behavior, and the shared unsaved-change guard.
 - When the user says a modal must have no close button, do not preserve or substitute an icon: dismissal can intentionally be limited to Escape and backdrop, and tests must assert that no explicit close control exists.
 - When a removed feature is explicitly restored under a new name, restore its complete UI, draft state, atomic persistence, create/edit coverage, and dirty-state behavior while keeping adjacent concepts such as the portrait photo separate.
+- A portable single-file build needs a client-native entrypoint and embedded assets; post-processing framework server output is a fragile substitute for a deliberate release target.
+- When visitor is the standalone default but all features must remain available, keep admin access out of the UI and recognize only the exact `?admin` query key.
+- Model permissions by capability, not by a single mode gate: a visitor can remain unable to create, edit, or delete people while still being explicitly allowed to import and export the whole archive.

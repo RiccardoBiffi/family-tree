@@ -4,10 +4,16 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
-    "build": "next build",
+    "build": "npm run build:offline",
+    "build:offline": "vite build --config vite.offline.config.ts && node scripts/finalize-offline.mjs",
+    "build:web": "next build",
     "start": "next start",
-    "lint": "eslint src eslint.config.mjs next.config.ts postcss.config.mjs vitest.config.ts --max-warnings=0",
-    "test": "vitest run"
+    "start:web": "next start",
+    "lint": "eslint src offline scripts eslint.config.mjs next.config.ts postcss.config.mjs vite.offline.config.ts vitest.config.ts --max-warnings=0",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "verify:offline": "node scripts/verify-offline.mjs && node scripts/verify-offline-acceptance.mjs",
+    "release": "npm run lint && npm run typecheck && npm test && npm run build:web && npm run build && npm run verify:offline"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.3",
@@ -22,14 +28,19 @@
     "vitest": "^1.6.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.10.2",
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "4.4.1",
     "eslint": "^9",
     "eslint-config-next": "15.3.2",
+    "playwright": "1.58.2",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite": "5.4.21",
+    "vite-plugin-singlefile": "2.3.3"
   }
 }

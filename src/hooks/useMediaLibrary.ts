@@ -9,6 +9,10 @@ import {
   type MediaAssetRole,
 } from "@/models/MediaAsset";
 import { MediaDB } from "@/utils/mediaDB";
+import {
+  isPersistenceCapabilityError,
+  type PersistenceStatus,
+} from "@/utils/persistence";
 
 export type MediaAssetKind = "image" | "audio" | "video" | "pdf" | "file";
 
@@ -46,6 +50,8 @@ export function useMediaLibrary() {
   );
   const [isReady, setIsReady] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [persistenceStatus, setPersistenceStatus] =
+    useState<PersistenceStatus>("durable");
 
   if (!dbRef.current) {
     dbRef.current = new MediaDB();
@@ -61,16 +67,31 @@ export function useMediaLibrary() {
   );
 
   const refreshAssets = useCallback(async () => {
-    if (!dbRef.current!.isAvailable()) {
+    if (
+      persistenceStatus === "volatile" ||
+      !dbRef.current!.isAvailable()
+    ) {
+      setPersistenceStatus("volatile");
       return assetsRef.current;
     }
 
-    const nextAssets = await dbRef.current!.list();
-    updateAssets(nextAssets);
-    setError(null);
-    setIsReady(true);
-    return nextAssets;
-  }, [updateAssets]);
+    try {
+      const nextAssets = await dbRef.current!.list();
+      updateAssets(nextAssets);
+      setError(null);
+      setIsReady(true);
+      return nextAssets;
+    } catch (cause) {
+      if (!isPersistenceCapabilityError(cause)) {
+        throw cause;
+      }
+
+      setPersistenceStatus("volatile");
+      setError(null);
+      setIsReady(true);
+      return assetsRef.current;
+    }
+  }, [persistenceStatus, updateAssets]);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,7 +106,12 @@ export function useMediaLibrary() {
       })
       .catch((cause: unknown) => {
         if (!cancelled) {
-          setError(cause instanceof Error ? cause : new Error(String(cause)));
+          if (isPersistenceCapabilityError(cause)) {
+            setPersistenceStatus("volatile");
+            setError(null);
+          } else {
+            setError(cause instanceof Error ? cause : new Error(String(cause)));
+          }
           setIsReady(true);
         }
       });
@@ -137,20 +163,49 @@ export function useMediaLibrary() {
 
   const replaceAssets = useCallback(
     async (nextAssets: readonly MediaAssetRecord[]) => {
-      if (dbRef.current!.isAvailable()) {
-        await dbRef.current!.replaceAll(nextAssets);
-        setError(null);
+      if (
+        persistenceStatus === "durable" &&
+        dbRef.current!.isAvailable()
+      ) {
+        try {
+          await dbRef.current!.replaceAll(nextAssets);
+          setError(null);
+        } catch (cause) {
+          if (!isPersistenceCapabilityError(cause)) {
+            throw cause;
+          }
+
+          setPersistenceStatus("volatile");
+          setError(null);
+        }
+      } else {
+        setPersistenceStatus("volatile");
       }
       updateAssets(nextAssets);
     },
-    [updateAssets],
+    [persistenceStatus, updateAssets],
   );
 
   const ensureDemoAssets = useCallback(
     async (requiredAssetIds: readonly string[]) => {
-      const currentAssets = dbRef.current!.isAvailable()
-        ? await dbRef.current!.list()
-        : assetsRef.current;
+      let currentAssets = assetsRef.current;
+      if (
+        persistenceStatus === "durable" &&
+        dbRef.current!.isAvailable()
+      ) {
+        try {
+          currentAssets = await dbRef.current!.list();
+        } catch (cause) {
+          if (!isPersistenceCapabilityError(cause)) {
+            throw cause;
+          }
+
+          setPersistenceStatus("volatile");
+          setError(null);
+        }
+      } else {
+        setPersistenceStatus("volatile");
+      }
       const currentIds = new Set(currentAssets.map((asset) => asset.id));
       const missingDefinitions = Array.from(new Set(requiredAssetIds))
         .filter((assetId) => !currentIds.has(assetId))
@@ -185,14 +240,26 @@ export function useMediaLibrary() {
       );
       const nextAssets = [...currentAssets, ...newAssets];
 
-      if (dbRef.current!.isAvailable()) {
-        await dbRef.current!.replaceAll(nextAssets);
-        setError(null);
+      if (
+        persistenceStatus === "durable" &&
+        dbRef.current!.isAvailable()
+      ) {
+        try {
+          await dbRef.current!.replaceAll(nextAssets);
+          setError(null);
+        } catch (cause) {
+          if (!isPersistenceCapabilityError(cause)) {
+            throw cause;
+          }
+
+          setPersistenceStatus("volatile");
+          setError(null);
+        }
       }
       updateAssets(nextAssets);
       return nextAssets;
     },
-    [updateAssets],
+    [persistenceStatus, updateAssets],
   );
 
   const createAssetFromFile = useCallback(
@@ -211,6 +278,7 @@ export function useMediaLibrary() {
     viewsById,
     isReady,
     error,
+    persistenceStatus,
     refreshAssets,
     replaceAssets,
     ensureDemoAssets,

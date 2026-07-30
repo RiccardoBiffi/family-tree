@@ -120,6 +120,7 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
     snapshot,
     isLoaded,
     needsArchiveSetup,
+    persistenceStatus: snapshotPersistenceStatus,
     initializeArchive,
     replaceSnapshot,
     upsertPerson,
@@ -129,6 +130,7 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
     viewsById,
     isReady: isMediaReady,
     error: mediaError,
+    persistenceStatus: mediaPersistenceStatus,
     refreshAssets,
     replaceAssets,
     ensureDemoAssets,
@@ -141,6 +143,11 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
   const didMigrateDemoMediaRef = useRef(false);
   const deferredQuery = useDeferredValue(query);
   const isAdmin = mode === "admin";
+  const persistenceStatus =
+    snapshotPersistenceStatus === "volatile" ||
+    mediaPersistenceStatus === "volatile"
+      ? "volatile"
+      : "durable";
   const people = snapshot?.people ?? emptyPeople;
   const storedPeopleById = useMemo(
     () => new Map(people.map((person) => [person.id, person])),
@@ -594,6 +601,23 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
         id="family-tree-view-panel"
         role="tabpanel"
       >
+        {isAdmin && persistenceStatus === "volatile" ? (
+          <aside
+            aria-live="polite"
+            className="family-tree-warnings"
+            role="status"
+          >
+            <strong>Archiviazione temporanea</strong>
+            <div>
+              <span>
+                Il salvataggio permanente non è disponibile. I dati resteranno
+                solo per questa sessione: esporta subito un file .albero per
+                non perderli.
+              </span>
+            </div>
+          </aside>
+        ) : null}
+
         {warnings.length > 0 ? (
           <aside aria-live="polite" className="family-tree-warnings">
             <strong>Controlli di coerenza</strong>
