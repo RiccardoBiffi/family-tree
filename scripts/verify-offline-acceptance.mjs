@@ -27,12 +27,12 @@ const pdfBytes = Buffer.from(
 const videoBytes = Buffer.from([
   0, 0, 0, 20, 102, 116, 121, 112, 105, 115, 111, 109,
 ]);
-const demoAudioBytes = await readFile(
-  new URL(
-    "../public/demo-media/audio/cartolina-anna-conti.wav",
-    import.meta.url,
-  ),
-);
+const userAudioBytes = Buffer.from([
+  82, 73, 70, 70, 36, 0, 0, 0, 87, 65, 86, 69,
+  102, 109, 116, 32, 16, 0, 0, 0, 1, 0, 1, 0,
+  64, 31, 0, 0, 128, 62, 0, 0, 2, 0, 16, 0,
+  100, 97, 116, 97, 0, 0, 0, 0,
+]);
 
 function assert(condition, message) {
   if (!condition) {
@@ -152,7 +152,7 @@ async function createAdultWithMedia(page) {
       name: "ricordo-ada.png",
     },
     {
-      buffer: demoAudioBytes,
+      buffer: userAudioBytes,
       mimeType: "audio/wav",
       name: "voce-ada.wav",
     },
@@ -279,6 +279,10 @@ async function runDurableDesktopFlow(browser) {
     await initializeArchive(page);
     await assertVisitor(page, "desktop default");
     await assertNoPageOverflow(page, "desktop default");
+    assert(
+      (await getMediaManifest(page)).length === 0,
+      "A fresh archive must start with zero IndexedDB media records.",
+    );
 
     for (const viewName of ["Diagramma", "Tabella", "Timeline"]) {
       await page.getByRole("tab", { exact: true, name: viewName }).click();
@@ -377,13 +381,13 @@ async function runMobileFlow(browser) {
   );
 }
 
-async function runEmbeddedDemoMediaFlow(browser) {
+async function runMediaFreeDemoFallbackFlow(browser) {
   const context = await browser.newContext({
     viewport: { height: 900, width: 1440 },
   });
   await context.setOffline(true);
   const page = await context.newPage();
-  const assertCleanRuntime = observeRuntime(page, "embedded demo media");
+  const assertCleanRuntime = observeRuntime(page, "media-free demo fallback");
 
   try {
     await page.goto(artifactUrl);
@@ -398,50 +402,23 @@ async function runEmbeddedDemoMediaFlow(browser) {
       .click();
 
     const details = page.getByRole("dialog", { name: /Giovanni Rinaldi/ });
-    const portrait = details.getByRole("img", {
-      name: /Giovanni Rinaldi/,
-    });
-    const audio = details.getByLabel(
-      "Cartolina sonora di Giovanni Rinaldi.wav",
-    );
-    await portrait.waitFor();
-    await audio.waitFor();
-    const mediaState = await page.evaluate(
-      ({ audioLabel, portraitLabel }) => {
-        const image = document.querySelector(
-          `img[alt="${portraitLabel}"]`,
-        );
-        const audioElement = document.querySelector(
-          `audio[aria-label="${audioLabel}"]`,
-        );
-        return {
-          audioSource: audioElement?.getAttribute("src") ?? "",
-          imageComplete:
-            image instanceof HTMLImageElement &&
-            image.complete &&
-            image.naturalWidth > 0,
-          imageSource: image?.getAttribute("src") ?? "",
-        };
-      },
-      {
-        audioLabel: "Cartolina sonora di Giovanni Rinaldi.wav",
-        portraitLabel: "Nanni (Giovanni Rinaldi)",
-      },
-    );
-    assert(mediaState.imageComplete, "Embedded demo portrait did not decode.");
     assert(
-      mediaState.imageSource.startsWith("blob:") &&
-        mediaState.audioSource.startsWith("blob:"),
-      "Embedded demo media did not resolve to local blob URLs.",
+      (await details.locator("img, audio, video").count()) === 0,
+      "Demo fallback rendered bundled multimedia.",
     );
     const manifest = await getMediaManifest(page);
-    assert(manifest.length === 20, `Expected 20 demo media records, found ${manifest.length}.`);
+    assert(
+      manifest.length === 0,
+      `Expected zero demo media records, found ${manifest.length}.`,
+    );
     assertCleanRuntime();
   } finally {
     await context.close();
   }
 
-  console.log("demo media acceptance: all 20 embedded records seeded and portrait/audio resolve offline.");
+  console.log(
+    "media-free fallback: demo people render with zero bundled or IndexedDB media.",
+  );
 }
 
 async function runVolatileFlow(browser) {
@@ -562,7 +539,7 @@ const browser = await chromium.launch({ headless: true });
 try {
   await runDurableDesktopFlow(browser);
   await runMobileFlow(browser);
-  await runEmbeddedDemoMediaFlow(browser);
+  await runMediaFreeDemoFallbackFlow(browser);
   const volatileArchive = await runVolatileFlow(browser);
   await runVolatileRecoveryFlow(browser, volatileArchive);
 } finally {

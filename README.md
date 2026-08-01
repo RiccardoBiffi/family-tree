@@ -30,8 +30,10 @@ npm run build
 
 L’artefatto viene scritto in
 `dist-offline/archivio-famiglia.html`. Può essere aperto direttamente con un
-doppio clic, senza server e senza connessione Internet. JavaScript, CSS e i 20
-media demo sono incorporati nel file.
+doppio clic, senza server e senza connessione Internet. JavaScript, CSS e i
+dati demo testuali sono incorporati nel file; non contiene file multimediali.
+Immagini, audio, video e PDF vengono aggiunti esclusivamente dall’utente e
+salvati nel database IndexedDB del browser.
 
 - `archivio-famiglia.html` apre l’archivio in modalità visitatore.
 - `archivio-famiglia.html?admin` abilita la modalità amministratore.
@@ -44,7 +46,8 @@ media demo sono incorporati nel file.
 
 La build verifica che l’output contenga esattamente un file, non superi 8 MiB,
 non referenzi script, fogli di stile, media o source map esterni e includa tutti
-i media demo. Al termine stampa dimensione e SHA-256:
+i dati dell’app senza incorporare contenuti multimediali. Al termine stampa
+dimensione e SHA-256:
 
 ```bash
 npm run verify:offline

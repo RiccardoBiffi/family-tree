@@ -169,6 +169,18 @@ async function serializeAsset(asset: MediaAssetRecord) {
 }
 
 describe(".albero package", () => {
+  it("round-trips a media-free snapshot with zero assets", async () => {
+    const snapshot = snapshotWithoutMediaReferences();
+
+    const archive = await exportAlberoPackage(snapshot, [], {
+      exportedAt: "2026-07-29T10:00:00.000Z",
+    });
+    const imported = await importAlberoPackage(archive);
+
+    expect(imported.snapshot).toEqual(snapshot);
+    expect(imported.assets).toEqual([]);
+  });
+
   it("round-trips a realistic closed snapshot and every media Blob", async () => {
     const snapshot = createClosedSnapshot();
     const assets = createClosedAssets();

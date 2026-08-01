@@ -257,3 +257,34 @@
 - A fresh read-only critic returned PASS with no material gap. The complete
   transfer round-trip runs on desktop; mobile independently verifies the same
   controls, target sizes, layout, and offline policy.
+
+# Zero-media offline distribution
+
+- [x] Remove the tracked demo `.webp` and `.wav` files and their build embedding path.
+- [x] Make the built-in Rinaldi seed contain no photo or multimedia references.
+- [x] Remove automatic demo-media fetching/seeding from the runtime.
+- [x] Keep user-selected images, audio, video, and PDFs stored through `MediaDB` in IndexedDB.
+- [x] Export only the media records already held by the user media store.
+- [x] Make structural verification require zero multimedia files and zero bundled demo-media paths in `dist-offline`.
+- [x] Replace embedded-demo browser acceptance with a media-free baseline plus user-upload persistence and archive round-trip proof.
+- [x] Run focused tests, lint, typecheck, the offline build, structural verification, browser acceptance, and the full release pipeline.
+
+## Zero-media offline distribution review
+
+- Removed the 10 tracked WebP portraits, 10 tracked WAV postcards, virtual Vite
+  module, fetch shim, demo definitions, reference migration, and runtime seeding.
+- The Rinaldi fallback seed now has `photo: null` and `attachments: null` for
+  every person. User WebP/WAV support remains in the MIME allowlist and tests
+  prove user-selected files are written through `MediaDB`.
+- Archive export now reads the current media store directly. Media-free and
+  media-bearing `.albero` round trips both pass without inventing assets.
+- `dist-offline/archivio-famiglia.html` is the only release file: 583,781
+  bytes, zero multimedia files, zero bundled multimedia payloads, SHA-256
+  `98e784acb16d017bf902a6f1b22af3ade58fac492f7b048b6a2ca2ca936551b5`.
+- Final `npm run release` passes lint, TypeScript, 57/57 tests, all Next static
+  routes, standalone build, structural checks, and desktop/mobile offline
+  browser acceptance including fresh zero-media IndexedDB state, user upload,
+  reload, export/import hash equality, and volatile recovery.
+- The in-app Browser runtime rejected the workspace path containing a space;
+  the repository's Playwright acceptance suite was used as the documented
+  fallback and passed outside the sandbox.

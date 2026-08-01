@@ -5,8 +5,6 @@
 
 # media
 /public/*
-!/public/demo-media/
-!/public/demo-media/**
 
 # dependencies
 /node_modules

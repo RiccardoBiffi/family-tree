@@ -9,7 +9,6 @@ const archiveMocks = vi.hoisted(() => ({
 
 const mediaMocks = vi.hoisted(() => ({
   createAssetFromFile: vi.fn(),
-  ensureDemoAssets: vi.fn(async () => []),
   refreshAssets: vi.fn(async (): Promise<MediaAssetRecord[]> => []),
   replaceAssets: vi.fn(async () => undefined),
 }));
@@ -61,25 +60,25 @@ vi.mock("@/hooks/useMediaLibrary", () => ({
     isReady: true,
     viewsById: new Map([
       [
-        "demo-p1-photo",
+        "user-p1-photo",
         {
-          fileName: "giovanni-rinaldi.webp",
-          id: "demo-p1-photo",
+          fileName: "ritratto-giovanni.webp",
+          id: "user-p1-photo",
           kind: "image",
           mimeType: "image/webp",
           role: "photo",
-          url: "blob:demo-p1-photo",
+          url: "blob:user-p1-photo",
         },
       ],
       [
-        "demo-p1-audio",
+        "user-p1-audio",
         {
-          fileName: "cartolina-giovanni-rinaldi.wav",
-          id: "demo-p1-audio",
+          fileName: "intervista-giovanni.wav",
+          id: "user-p1-audio",
           kind: "audio",
           mimeType: "audio/wav",
           role: "attachment",
-          url: "blob:demo-p1-audio",
+          url: "blob:user-p1-audio",
         },
       ],
     ]),
@@ -103,33 +102,24 @@ import {
   type FamilyTreeSnapshot,
 } from "@/models/FamilyTree";
 import {
-  parseMediaAssetReference,
   type MediaAssetRecord,
   type MediaAssetRole,
 } from "@/models/MediaAsset";
-import {
-  DEMO_MEDIA_MIGRATION_STORAGE_KEY,
-} from "@/utils/demoMediaMigration";
 
-function withoutDemoMedia(
+function withUserMedia(
   snapshot: FamilyTreeSnapshot,
 ): FamilyTreeSnapshot {
   return {
     ...snapshot,
-    people: snapshot.people.map((person) => {
-      const attachments =
-        person.attachments?.filter(
-          (attachment) => !parseMediaAssetReference(attachment),
-        ) ?? [];
-
-      return {
-        ...person,
-        photo: parseMediaAssetReference(person.photo)
-          ? null
-          : person.photo,
-        attachments: attachments.length > 0 ? attachments : null,
-      };
-    }),
+    people: snapshot.people.map((person, index) =>
+      index === 0
+        ? {
+            ...person,
+            photo: "media:user-p1-photo",
+            attachments: ["media:user-p1-audio"],
+          }
+        : person,
+    ),
   };
 }
 
@@ -174,111 +164,31 @@ function createTestAsset({
   };
 }
 
-describe("FamilyTreeApp demo media migration", () => {
+describe("FamilyTreeApp user media", () => {
   beforeEach(() => {
     window.localStorage.clear();
     archiveMocks.importAlberoPackage.mockReset();
     mediaMocks.createAssetFromFile.mockReset();
-    mediaMocks.ensureDemoAssets.mockClear();
-    mediaMocks.ensureDemoAssets.mockResolvedValue([]);
     mediaMocks.refreshAssets.mockReset();
     mediaMocks.refreshAssets.mockResolvedValue([]);
     mediaMocks.replaceAssets.mockReset();
     mediaMocks.replaceAssets.mockResolvedValue(undefined);
   });
 
-  it("upgrades a legacy demo snapshot once without changing the snapshot schema", async () => {
-    window.localStorage.setItem(
-      FAMILY_TREE_STORAGE_KEY,
-      JSON.stringify(withoutDemoMedia(seedFamilyTree)),
-    );
-
-    render(<FamilyTreeApp mode="visitor" />);
-
-    expect(await screen.findByText("Archivio Rinaldi")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(
-        window.localStorage.getItem(
-          DEMO_MEDIA_MIGRATION_STORAGE_KEY,
-        ),
-      ).toBe("complete");
-      expect(storedPerson("p1")?.photo).toBe("media:demo-p1-photo");
-      expect(storedPerson("p1")?.attachments).toContain(
-        "media:demo-p1-audio",
-      );
-    });
-
-    const stored = readStoredSnapshot() as FamilyTreeSnapshot &
-      Record<string, unknown>;
-    expect(stored.version).toBe(1);
-    expect(stored).not.toHaveProperty("migrations");
-  });
-
-  it("does not restore a demo portrait after an admin removes it and reloads", async () => {
-    const user = userEvent.setup();
-    window.localStorage.setItem(
-      FAMILY_TREE_STORAGE_KEY,
-      JSON.stringify(seedFamilyTree),
-    );
-    const { unmount } = render(<FamilyTreeApp mode="admin" />);
-
-    expect(await screen.findByText("Archivio Rinaldi")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(
-        window.localStorage.getItem(
-          DEMO_MEDIA_MIGRATION_STORAGE_KEY,
-        ),
-      ).toBe("complete");
-    });
-
-    await user.click(screen.getByRole("button", { name: /Nanni/i }));
-    const personDialog = await screen.findByRole("dialog", {
-      name: /Giovanni Rinaldi/i,
-    });
-    await user.click(
-      within(personDialog).getByRole("button", { name: "Modifica" }),
-    );
-    await user.click(
-      await screen.findByRole("button", {
-        name: "Rimuovi foto",
-      }),
-    );
-    await user.click(
-      screen.getByRole("button", { name: "Salva modifiche" }),
-    );
-
-    await waitFor(() => {
-      expect(storedPerson("p1")?.photo).toBeNull();
-      expect(storedPerson("p1")?.attachments).toContain(
-        "media:demo-p1-audio",
-      );
-    });
-
-    unmount();
-    render(<FamilyTreeApp mode="admin" />);
-    expect(await screen.findByText("Archivio Rinaldi")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(storedPerson("p1")?.photo).toBeNull();
-      expect(storedPerson("p1")?.attachments).toContain(
-        "media:demo-p1-audio",
-      );
-    });
-  });
-
   it("removes an existing multimedia item and adds a local PDF in the same atomic save", async () => {
     const user = userEvent.setup();
     const photoAsset = createTestAsset({
-      id: "demo-p1-photo",
+      id: "user-p1-photo",
       personId: "p1",
       role: "photo",
-      name: "giovanni-rinaldi.webp",
+      name: "ritratto-giovanni.webp",
       mimeType: "image/webp",
     });
     const audioAsset = createTestAsset({
-      id: "demo-p1-audio",
+      id: "user-p1-audio",
       personId: "p1",
       role: "attachment",
-      name: "cartolina-giovanni-rinaldi.wav",
+      name: "intervista-giovanni.wav",
       mimeType: "audio/wav",
     });
     const pdfAsset = createTestAsset({
@@ -298,7 +208,7 @@ describe("FamilyTreeApp demo media migration", () => {
     mediaMocks.createAssetFromFile.mockReturnValue(pdfAsset);
     window.localStorage.setItem(
       FAMILY_TREE_STORAGE_KEY,
-      JSON.stringify(seedFamilyTree),
+      JSON.stringify(withUserMedia(seedFamilyTree)),
     );
 
     render(<FamilyTreeApp mode="admin" />);
@@ -313,7 +223,7 @@ describe("FamilyTreeApp demo media migration", () => {
 
     await user.click(
       await screen.findByRole("button", {
-        name: "Rimuovi cartolina-giovanni-rinaldi.wav",
+        name: "Rimuovi intervista-giovanni.wav",
       }),
     );
     await user.upload(
@@ -386,10 +296,10 @@ describe("FamilyTreeApp demo media migration", () => {
     ]);
   });
 
-  it("marks a successful import so missing demo media stay missing after reload", async () => {
+  it("imports a media-free archive without inventing multimedia", async () => {
     const user = userEvent.setup();
     const importedSnapshot = {
-      ...withoutDemoMedia(seedFamilyTree),
+      ...seedFamilyTree,
       metadata: {
         ...seedFamilyTree.metadata,
         familyName: "Importata",
@@ -409,15 +319,6 @@ describe("FamilyTreeApp demo media migration", () => {
     const { unmount } = render(<FamilyTreeApp mode="admin" />);
 
     expect(await screen.findByText("Archivio Rinaldi")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(
-        window.localStorage.getItem(
-          DEMO_MEDIA_MIGRATION_STORAGE_KEY,
-        ),
-      ).toBe("complete");
-    });
-    window.localStorage.removeItem(DEMO_MEDIA_MIGRATION_STORAGE_KEY);
-
     await user.click(
       screen.getByRole("button", { name: "Gestisci archivio" }),
     );
@@ -438,14 +339,10 @@ describe("FamilyTreeApp demo media migration", () => {
     ).toHaveTextContent("Archivio importato.");
     await waitFor(() => {
       expect(screen.getByText("Archivio Importata")).toBeInTheDocument();
-      expect(
-        window.localStorage.getItem(
-          DEMO_MEDIA_MIGRATION_STORAGE_KEY,
-        ),
-      ).toBe("complete");
       expect(storedPerson("p1")?.photo).toBeNull();
       expect(storedPerson("p1")?.attachments).toBeNull();
     });
+    expect(mediaMocks.replaceAssets).toHaveBeenCalledWith([]);
 
     unmount();
     render(<FamilyTreeApp mode="admin" />);

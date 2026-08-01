@@ -48,7 +48,7 @@ const rounds = [
   {
     name: "Local media round 6",
     status: "Critiqued",
-    finding: "Ten portraits, ten sound postcards, IndexedDB storage, and the archive menu shipped; critics exposed package-closure and local-only editor gaps.",
+    finding: "An early demo-media bundle shipped with IndexedDB storage and the archive menu; later review established that multimedia must come only from the user.",
   },
   {
     name: "Portability round 7",
@@ -64,6 +64,11 @@ const rounds = [
     name: "Modal/media correction round 9",
     status: "Passed",
     finding: "All close controls are gone; local multimedia add/remove, dirty Escape/backdrop, and confirmed person deletion pass in real browsers.",
+  },
+  {
+    name: "Zero-media release round 10",
+    status: "Passed",
+    finding: "The standalone artifact contains zero multimedia files or payloads; user uploads remain in IndexedDB and portable .albero archives.",
   },
 ];
 
@@ -299,12 +304,12 @@ export default function ProgressPage() {
                 Local media and portable archive
               </h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-[#526158]">
-                Final browser proof: local portrait and audio playback, then one-file export,
+                Browser proof: user-selected portrait and audio playback, then one-file export,
                 destructive local clear, import, reload, and byte-identical asset recovery.
               </p>
             </div>
             <span className="rounded-full bg-[#e5f4e8] px-3 py-1.5 text-xs font-semibold text-[#0c3b24]">
-              21 assets · 2,508,450 bytes · 0 console errors
+              User-owned media · IndexedDB · 0 bundled files
             </span>
           </div>
           <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">

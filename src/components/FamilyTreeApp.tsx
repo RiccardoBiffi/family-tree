@@ -27,11 +27,8 @@ import {
   importAlberoPackage,
 } from "@/utils/alberoPackage";
 import {
-  addMissingDemoMediaReferences,
-  hasCompletedDemoMediaMigration,
-  markDemoMediaMigrationComplete,
   removeLegacyAttachmentValues,
-} from "@/utils/demoMediaMigration";
+} from "@/utils/snapshotMigration";
 import {
   createEmptyPersonDraft,
   createPersonId,
@@ -86,12 +83,6 @@ function formatArchiveDate(value: string) {
     .replaceAll(".", "");
 }
 
-function getPersonMediaAssetIds(person: PersonRecord): string[] {
-  return [person.photo, ...(person.attachments ?? [])]
-    .map((value) => parseMediaAssetReference(value))
-    .filter((assetId): assetId is string => Boolean(assetId));
-}
-
 function createArchiveFileName(familyName: string): string {
   const slug =
     familyName
@@ -128,19 +119,17 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
   } = useFamilyTreeStore();
   const {
     viewsById,
-    isReady: isMediaReady,
     error: mediaError,
     persistenceStatus: mediaPersistenceStatus,
     refreshAssets,
     replaceAssets,
-    ensureDemoAssets,
     createAssetFromFile,
   } = useMediaLibrary();
   const [view, setView] = useState<AppView>("diagram");
   const [query, setQuery] = useState("");
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   const [editorState, setEditorState] = useState<EditorState | null>(null);
-  const didMigrateDemoMediaRef = useRef(false);
+  const didRemoveLegacyAttachments = useRef(false);
   const deferredQuery = useDeferredValue(query);
   const isAdmin = mode === "admin";
   const persistenceStatus =
@@ -254,49 +243,17 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
     if (
       !snapshot ||
       needsArchiveSetup ||
-      didMigrateDemoMediaRef.current
+      didRemoveLegacyAttachments.current
     ) {
       return;
     }
 
-    didMigrateDemoMediaRef.current = true;
-    let migratedSnapshot = snapshot;
-    if (!hasCompletedDemoMediaMigration()) {
-      migratedSnapshot =
-        addMissingDemoMediaReferences(migratedSnapshot);
-      markDemoMediaMigrationComplete();
-    }
-
-    migratedSnapshot =
-      removeLegacyAttachmentValues(migratedSnapshot);
+    didRemoveLegacyAttachments.current = true;
+    const migratedSnapshot = removeLegacyAttachmentValues(snapshot);
     if (migratedSnapshot !== snapshot) {
       replaceSnapshot(migratedSnapshot);
     }
   }, [needsArchiveSetup, replaceSnapshot, snapshot]);
-
-  useEffect(() => {
-    if (
-      !snapshot ||
-      needsArchiveSetup ||
-      !isMediaReady ||
-      mediaError
-    ) {
-      return;
-    }
-
-    const referencedAssetIds = snapshot.people.flatMap(
-      getPersonMediaAssetIds,
-    );
-    void ensureDemoAssets(referencedAssetIds).catch((error: unknown) => {
-      console.error("Unable to seed local demo media.", error);
-    });
-  }, [
-    ensureDemoAssets,
-    isMediaReady,
-    mediaError,
-    needsArchiveSetup,
-    snapshot,
-  ]);
 
   useEffect(() => {
     if (!snapshot) {
@@ -495,10 +452,7 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
   };
 
   const handleExportArchive = async () => {
-    const referencedAssetIds = snapshot.people.flatMap(
-      getPersonMediaAssetIds,
-    );
-    const currentAssets = await ensureDemoAssets(referencedAssetIds);
+    const currentAssets = await refreshAssets();
     const archiveBlob = await exportAlberoPackage(snapshot, currentAssets);
     const downloadUrl = URL.createObjectURL(archiveBlob);
     const link = document.createElement("a");
@@ -531,8 +485,6 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
       replaceSnapshot(
         removeLegacyAttachmentValues(imported.snapshot),
       );
-      markDemoMediaMigrationComplete();
-      didMigrateDemoMediaRef.current = true;
     } catch (error) {
       await replaceAssets(previousAssets).catch(() => undefined);
       try {

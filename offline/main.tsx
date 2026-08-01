@@ -5,10 +5,6 @@ import "@xyflow/react/dist/style.css";
 import "@/app/globals.css";
 import { FamilyTreeApp } from "@/components/FamilyTreeApp";
 
-import { installEmbeddedDemoMediaFetch } from "./embeddedDemoMedia";
-
-installEmbeddedDemoMediaFetch();
-
 const root = document.getElementById("root");
 
 if (!root) {

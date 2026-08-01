@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { demoMediaById } from "@/data/demoMedia";
 import {
   createMediaAssetRecord,
   type MediaAssetRecord,
@@ -186,82 +185,6 @@ export function useMediaLibrary() {
     [persistenceStatus, updateAssets],
   );
 
-  const ensureDemoAssets = useCallback(
-    async (requiredAssetIds: readonly string[]) => {
-      let currentAssets = assetsRef.current;
-      if (
-        persistenceStatus === "durable" &&
-        dbRef.current!.isAvailable()
-      ) {
-        try {
-          currentAssets = await dbRef.current!.list();
-        } catch (cause) {
-          if (!isPersistenceCapabilityError(cause)) {
-            throw cause;
-          }
-
-          setPersistenceStatus("volatile");
-          setError(null);
-        }
-      } else {
-        setPersistenceStatus("volatile");
-      }
-      const currentIds = new Set(currentAssets.map((asset) => asset.id));
-      const missingDefinitions = Array.from(new Set(requiredAssetIds))
-        .filter((assetId) => !currentIds.has(assetId))
-        .map((assetId) => demoMediaById.get(assetId))
-        .filter((definition) => definition !== undefined);
-
-      if (missingDefinitions.length === 0) {
-        updateAssets(currentAssets);
-        return currentAssets;
-      }
-
-      const newAssets = await Promise.all(
-        missingDefinitions.map(async (definition) => {
-          const response = await fetch(definition.path);
-          if (!response.ok) {
-            throw new Error(
-              `Impossibile caricare il media demo “${definition.name}”.`,
-            );
-          }
-
-          const bytes = await response.arrayBuffer();
-          return createMediaAssetRecord({
-            id: definition.id,
-            personId: definition.personId,
-            role: definition.role,
-            name: definition.name,
-            blob: new Blob([bytes], { type: definition.mimeType }),
-            createdAt: "2026-03-09T09:00:00.000Z",
-            updatedAt: "2026-03-09T09:00:00.000Z",
-          });
-        }),
-      );
-      const nextAssets = [...currentAssets, ...newAssets];
-
-      if (
-        persistenceStatus === "durable" &&
-        dbRef.current!.isAvailable()
-      ) {
-        try {
-          await dbRef.current!.replaceAll(nextAssets);
-          setError(null);
-        } catch (cause) {
-          if (!isPersistenceCapabilityError(cause)) {
-            throw cause;
-          }
-
-          setPersistenceStatus("volatile");
-          setError(null);
-        }
-      }
-      updateAssets(nextAssets);
-      return nextAssets;
-    },
-    [persistenceStatus, updateAssets],
-  );
-
   const createAssetFromFile = useCallback(
     (personId: string, role: MediaAssetRole, file: File) =>
       createMediaAssetRecord({
@@ -281,7 +204,6 @@ export function useMediaLibrary() {
     persistenceStatus,
     refreshAssets,
     replaceAssets,
-    ensureDemoAssets,
     createAssetFromFile,
   };
 }
