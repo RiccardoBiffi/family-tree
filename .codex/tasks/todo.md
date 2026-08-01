@@ -288,3 +288,25 @@
 - The in-app Browser runtime rejected the workspace path containing a space;
   the repository's Playwright acceptance suite was used as the documented
   fallback and passed outside the sandbox.
+
+# Vercel Next.js deployment manifest
+
+- [x] Keep Vercel's detected Next.js preset and add repository-owned deployment configuration.
+- [x] Override Vercel's build command with `npm run build:web` without changing the offline `npm run build` contract.
+- [x] Verify the web build creates `.next/routes-manifest.json` and the expected static routes.
+- [x] Run config validation, lint, typecheck, and focused release checks.
+
+## Vercel deployment review
+
+- Root cause: Vercel detected Next.js but used the repository's `build` script,
+  which intentionally produces only the standalone Vite artifact and therefore
+  never created `.next/routes-manifest.json`.
+- Added root `vercel.json` with `buildCommand: npm run build:web`. No custom
+  Output Directory is set, so Vercel keeps the Next.js `.next` default.
+- The local web build completed and produced routes-manifest version 3 with
+  `/`, `/admin`, `/progress`, `/_not-found`, and `/favicon.ico` static routes.
+- `npm run build` still produces only the verified offline HTML artifact with
+  zero multimedia files or payloads.
+- Verification passes: Vercel JSON/build-command validation, Next production
+  build, manifest parsing, ESLint, TypeScript, offline build, structural checks,
+  and `git diff --check`.

@@ -16,3 +16,4 @@
 - When visitor is the standalone default but all features must remain available, keep admin access out of the UI and recognize only the exact `?admin` query key.
 - Model permissions by capability, not by a single mode gate: a visitor can remain unable to create, edit, or delete people while still being explicitly allowed to import and export the whole archive.
 - Treat multimedia as user-owned input: never seed or bundle example media in `dist-offline`; keep uploaded and imported blobs in IndexedDB and verify the release contains zero multimedia artifacts.
+- When `npm run build` intentionally owns a non-Next release target, commit a Vercel-specific `buildCommand` for `next build` and verify `.next/routes-manifest.json` exists before deployment.
