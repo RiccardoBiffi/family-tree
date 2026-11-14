@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@xyflow/react", async () => {
   return {
@@ -29,6 +29,7 @@ vi.mock("@xyflow/react", async () => {
     ),
     Background: () => <div data-testid="flow-background" />,
     Controls: () => <div data-testid="flow-controls" />,
+    ControlButton: () => null,
     MiniMap: () => <div data-testid="flow-minimap" />,
     Handle: () => <div data-testid="flow-handle" />,
     MarkerType: {
@@ -46,9 +47,17 @@ vi.mock("@xyflow/react", async () => {
 import { FamilyTreeApp } from "@/components/FamilyTreeApp";
 import { seedFamilyTree } from "@/data/seedFamilyTree";
 import { FAMILY_TREE_STORAGE_KEY } from "@/models/FamilyTree";
+import { mockArchiveDB } from "@/test/mockArchiveDB";
 
 describe("FamilyTreeApp", () => {
+  let database: ReturnType<typeof mockArchiveDB>;
   beforeEach(() => {
+    database = mockArchiveDB();
+    vi.mocked(window.matchMedia).mockImplementation((query) => ({
+      matches: false, media: query, onchange: null,
+      addEventListener() {}, removeEventListener() {},
+      addListener() {}, removeListener() {}, dispatchEvent: () => true,
+    }));
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response(new Uint8Array([0]), { status: 200 })),
@@ -59,6 +68,7 @@ describe("FamilyTreeApp", () => {
       JSON.stringify(seedFamilyTree),
     );
   });
+  afterEach(() => { vi.restoreAllMocks(); });
 
   it("onboards a browser without a snapshot and preserves the family name after reload", async () => {
     window.localStorage.clear();
@@ -77,12 +87,9 @@ describe("FamilyTreeApp", () => {
 
     expect(await screen.findByText("Archivio Bianchi")).toBeInTheDocument();
 
-    const storedSnapshot = JSON.parse(
-      window.localStorage.getItem(FAMILY_TREE_STORAGE_KEY) ?? "null",
-    );
-    expect(storedSnapshot.metadata.familyName).toBe("Bianchi");
-    expect(storedSnapshot.metadata.title).toBe("Archivio della famiglia Bianchi");
-    expect(storedSnapshot.people).toEqual([]);
+    expect(database.snapshot?.metadata.familyName).toBe("Bianchi");
+    expect(database.snapshot?.metadata.title).toBe("Archivio della famiglia Bianchi");
+    expect(database.snapshot?.people).toEqual([]);
 
     unmount();
     render(<FamilyTreeApp mode="admin" />);
@@ -179,7 +186,7 @@ describe("FamilyTreeApp", () => {
     await user.click(screen.getByRole("button", { name: "Crea persona" }));
 
     await waitFor(() => {
-      expect(window.localStorage.getItem(FAMILY_TREE_STORAGE_KEY)).toContain("Giulia");
+      expect(database.snapshot?.people.some(({ name }) => name === "Giulia")).toBe(true);
     });
 
     const personDialog = await screen.findByRole("dialog");
@@ -237,7 +244,7 @@ describe("FamilyTreeApp", () => {
     await user.click(screen.getByRole("button", { name: "Salva modifiche" }));
 
     await waitFor(() => {
-      expect(window.localStorage.getItem(FAMILY_TREE_STORAGE_KEY)).toContain("Restauratore");
+      expect(database.snapshot?.people.find(({ id }) => id === "p1")?.profession).toBe("Restauratore");
     });
 
     const updatedDialog = await screen.findByRole("dialog");
@@ -277,18 +284,13 @@ describe("FamilyTreeApp", () => {
       name: /Modifica Nanni/i,
     })).toBeInTheDocument();
     expect(
-      JSON.parse(
-        window.localStorage.getItem(FAMILY_TREE_STORAGE_KEY) ?? "null",
-      ).people.some((person: { id: string }) => person.id === "p1"),
+      database.snapshot?.people.some(({ id }) => id === "p1"),
     ).toBe(true);
 
     confirm.mockReturnValueOnce(true);
     await user.click(screen.getByRole("button", { name: "Elimina" }));
     await waitFor(() => {
-      const stored = JSON.parse(
-        window.localStorage.getItem(FAMILY_TREE_STORAGE_KEY) ?? "null",
-      );
-      expect(stored.people.some((person: { id: string }) => person.id === "p1")).toBe(false);
+      expect(database.snapshot?.people.some(({ id }) => id === "p1")).toBe(false);
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
     confirm.mockRestore();
@@ -311,6 +313,7 @@ describe("FamilyTreeApp", () => {
     ).not.toBeInTheDocument();
 
     unmount();
+    database.read.mockRejectedValueOnce(new DOMException("Access denied.", "SecurityError"));
     render(<FamilyTreeApp mode="admin" />);
 
     expect(await screen.findByRole("button", { name: "Nuova persona" })).toBeInTheDocument();
@@ -323,5 +326,25 @@ describe("FamilyTreeApp", () => {
       screen.getByText(/esporta subito un file \.albero/u),
     ).toBeInTheDocument();
     expect(screen.queryByText(/visitatore|modalità admin|amministrazione/i)).not.toBeInTheDocument();
+  });
+
+  it("warns visitors when storage is unavailable", async () => {
+    database.read.mockRejectedValueOnce(new DOMException("Access denied.", "SecurityError"));
+    render(<FamilyTreeApp mode="visitor" />);
+    expect(await screen.findByText("Archiviazione temporanea")).toBeInTheDocument();
+  });
+
+  it("leaves an editor open and preserves the saved version when a transaction aborts", async () => {
+    const user = userEvent.setup();
+    const alert = vi.spyOn(window, "alert").mockImplementation(() => undefined);
+    render(<FamilyTreeApp mode="admin" />);
+    expect(await screen.findByText("Archivio Rinaldi")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Nuova persona" }));
+    await user.type(screen.getByLabelText("Nome"), "Amalia");
+    database.commit.mockRejectedValueOnce(new DOMException("Interrotta", "AbortError"));
+    await user.click(screen.getByRole("button", { name: "Crea persona" }));
+    await waitFor(() => expect(alert).toHaveBeenCalledWith(expect.stringContaining("Interrotta")));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(database.snapshot?.people.some(({ name }) => name === "Amalia")).toBe(false);
   });
 });

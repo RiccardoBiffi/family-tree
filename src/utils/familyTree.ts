@@ -197,51 +197,55 @@ export function normalizeFamilyTree(
   };
 }
 
-function detectAncestryCycle(peopleById: Map<string, PersonRecord>): boolean {
-  const visited = new Set<string>();
-  const visiting = new Set<string>();
+function analyzeAncestry(people: readonly PersonRecord[]) {
+  const peopleById = new Map(people.map((person) => [person.id, person]));
+  const generations = new Map<string, number>();
+  const active = new Set<string>();
+  let hasCycle = false;
 
-  function dfs(personId: string): boolean {
-    if (visiting.has(personId)) {
-      return true;
+  for (const person of peopleById.values()) {
+    if (generations.has(person.id)) {
+      continue;
     }
 
-    if (visited.has(personId)) {
-      return false;
-    }
-
-    visiting.add(personId);
-    const person = peopleById.get(personId);
-
-    for (const parentId of person?.parentIds ?? []) {
-      if (dfs(parentId)) {
-        return true;
+    const stack = [{ person, nextParent: 0, generation: 0 }];
+    active.add(person.id);
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1];
+      if (frame.nextParent >= frame.person.parentIds.length) {
+        generations.set(frame.person.id, frame.generation);
+        active.delete(frame.person.id);
+        stack.pop();
+        continue;
       }
-    }
 
-    visiting.delete(personId);
-    visited.add(personId);
-    return false;
+      const parentId = frame.person.parentIds[frame.nextParent];
+      const recordedGeneration = generations.get(parentId);
+      const parent = peopleById.get(parentId);
+
+      if (recordedGeneration !== undefined || !parent || active.has(parentId)) {
+        hasCycle ||= active.has(parentId);
+        frame.generation = Math.max(frame.generation, (recordedGeneration ?? 0) + 1);
+        frame.nextParent += 1;
+        continue;
+      }
+
+      active.add(parent.id);
+      stack.push({ person: parent, nextParent: 0, generation: 0 });
+    }
   }
 
-  for (const personId of peopleById.keys()) {
-    if (dfs(personId)) {
-      return true;
-    }
-  }
-
-  return false;
+  return { generations, hasCycle };
 }
 
 export function validateFamilyTree(snapshot: FamilyTreeSnapshot): string[] {
   const warnings: string[] = [];
-  const peopleById = new Map(snapshot.people.map((person) => [person.id, person]));
 
   if (snapshot.people.length === 0) {
     warnings.push("L'albero e' vuoto. Aggiungi almeno una persona per iniziare.");
   }
 
-  if (detectAncestryCycle(peopleById)) {
+  if (analyzeAncestry(snapshot.people).hasCycle) {
     warnings.push("Sono state rilevate dipendenze circolari tra antenati e discendenti.");
   }
 
@@ -295,16 +299,16 @@ export function getPersonShortName(
   return person.name || person.surname || "Sconosciuto";
 }
 
-export function formatDateLabel(date: string | null): string {
-  if (!date) {
-    return "Data sconosciuta";
-  }
+const personDateFormatter = new Intl.DateTimeFormat("it-IT", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  timeZone: "UTC",
+});
 
-  return new Intl.DateTimeFormat("it-IT", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(date));
+export function formatDateLabel(date: string | null): string {
+  const time = date ? Date.parse(date) : NaN;
+  return Number.isNaN(time) ? "Data sconosciuta" : personDateFormatter.format(time);
 }
 
 export function extractYear(date: string | null): number | null {
@@ -331,44 +335,168 @@ export function getLifeSpanLabel(person: PersonRecord): string {
   return `${birthYear ?? "?"} - ${deathYear ?? "oggi"}`;
 }
 
-export function computeGenerationMap(people: PersonRecord[]): Map<string, number> {
-  const peopleById = new Map(people.map((person) => [person.id, person]));
-  const memo = new Map<string, number>();
-  const active = new Set<string>();
+export function computeGenerationMap(people: readonly PersonRecord[]): Map<string, number> {
+  return analyzeAncestry(people).generations;
+}
 
-  const getGeneration = (personId: string): number => {
-    if (memo.has(personId)) {
-      return memo.get(personId) ?? 0;
-    }
-
-    if (active.has(personId)) {
-      return 0;
-    }
-
-    active.add(personId);
-    const person = peopleById.get(personId);
-
-    if (!person || person.parentIds.length === 0) {
-      memo.set(personId, 0);
-      active.delete(personId);
-      return 0;
-    }
-
-    const generation =
-      Math.max(
-        ...person.parentIds.map((parentId) => getGeneration(parentId)),
-      ) + 1;
-
-    memo.set(personId, generation);
-    active.delete(personId);
-    return generation;
-  };
-
+export function getPartnerComponents(people: readonly PersonRecord[]): string[][] {
+  const neighbors = new Map<string, string[]>(people.map(({ id }) => [id, []]));
   for (const person of people) {
-    getGeneration(person.id);
+    const personNeighbors = neighbors.get(person.id)!;
+    for (const partnerId of person.partnerIds) {
+      const partnerNeighbors = neighbors.get(partnerId);
+      if (partnerNeighbors && partnerId !== person.id) {
+        personNeighbors.push(partnerId);
+        partnerNeighbors.push(person.id);
+      }
+    }
   }
 
-  return memo;
+  const visited = new Set<string>();
+  const groups: string[][] = [];
+  for (const id of neighbors.keys()) {
+    if (visited.has(id)) {
+      continue;
+    }
+    const group = [id];
+    groups.push(group);
+    visited.add(id);
+    for (let cursor = 0; cursor < group.length; cursor += 1) {
+      for (const partnerId of neighbors.get(group[cursor])!) {
+        if (!visited.has(partnerId)) {
+          group.push(partnerId);
+          visited.add(partnerId);
+        }
+      }
+    }
+  }
+  return groups;
+}
+
+function getDirectedCycles(outgoing: readonly ReadonlySet<number>[]): Set<number> {
+  const incoming = outgoing.map((): number[] => []);
+  outgoing.forEach((children, parent) => {
+    for (const child of children) {
+      incoming[child].push(parent);
+    }
+  });
+
+  // Complete an iterative depth-first traversal before following the reverse edges.
+  const finished: number[] = [];
+  const visited = new Set<number>();
+  outgoing.forEach((_, index) => {
+    if (visited.has(index)) {
+      return;
+    }
+    visited.add(index);
+    const stack = [{ index, children: outgoing[index].values() }];
+    while (stack.length > 0) {
+      const frame = stack[stack.length - 1];
+      const child = frame.children.next();
+      if (child.done) {
+        finished.push(frame.index);
+        stack.pop();
+      } else if (!visited.has(child.value)) {
+        visited.add(child.value);
+        stack.push({ index: child.value, children: outgoing[child.value].values() });
+      }
+    }
+  });
+
+  visited.clear();
+  const cyclic = new Set<number>();
+  for (let index = finished.length - 1; index >= 0; index -= 1) {
+    const root = finished[index];
+    if (visited.has(root)) {
+      continue;
+    }
+    visited.add(root);
+    const component = [root];
+    for (let cursor = 0; cursor < component.length; cursor += 1) {
+      for (const neighbor of incoming[component[cursor]]) {
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor);
+          component.push(neighbor);
+        }
+      }
+    }
+    if (component.length > 1 || outgoing[root].has(root)) {
+      for (const member of component) {
+        cyclic.add(member);
+      }
+    }
+  }
+  return cyclic;
+}
+
+export function computeDiagramGenerationMap(people: readonly PersonRecord[]): Map<string, number> {
+  const baseGenerations = computeGenerationMap(people);
+  const groups = getPartnerComponents(people);
+  if (groups.length === people.length) {
+    return baseGenerations;
+  }
+
+  const ancestryEdges: [string, string][] = [];
+  for (const child of people) {
+    const generation = baseGenerations.get(child.id) ?? 0;
+    for (const parentId of child.parentIds) {
+      const parentGeneration = baseGenerations.get(parentId);
+      if (parentGeneration !== undefined && parentGeneration < generation) {
+        ancestryEdges.push([parentId, child.id]);
+      }
+    }
+  }
+
+  const buildGraph = (groups: string[][]) => {
+    const groupByPerson = new Map<string, number>();
+    const levels = groups.map((group, groupId) => {
+      let level = 0;
+      for (const id of group) {
+        groupByPerson.set(id, groupId);
+        level = Math.max(level, baseGenerations.get(id) ?? 0);
+      }
+      return level;
+    });
+    const outgoing = groups.map(() => new Set<number>());
+    const indegree = groups.map(() => 0);
+    for (const [parent, child] of ancestryEdges) {
+      const from = groupByPerson.get(parent)!;
+      const to = groupByPerson.get(child)!;
+      if (!outgoing[from].has(to)) {
+        outgoing[from].add(to);
+        indegree[to] += 1;
+      }
+    }
+    return { groupByPerson, indegree, levels, outgoing };
+  };
+
+  let graph = buildGraph(groups);
+  const cyclic = getDirectedCycles(graph.outgoing);
+  if (cyclic.size > 0) {
+    // Splitting only contradictory partner groups preserves alignments elsewhere.
+    graph = buildGraph(
+      groups.flatMap((group, index) => cyclic.has(index) ? group.map((id) => [id]) : [group]),
+    );
+  }
+
+  const queue: number[] = [];
+  graph.indegree.forEach((degree, index) => {
+    if (degree === 0) {
+      queue.push(index);
+    }
+  });
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const index = queue[cursor];
+    for (const child of graph.outgoing[index]) {
+      graph.levels[child] = Math.max(graph.levels[child], graph.levels[index] + 1);
+      graph.indegree[child] -= 1;
+      if (graph.indegree[child] === 0) {
+        queue.push(child);
+      }
+    }
+  }
+
+  return new Map(people.map(({ id }) => [id, graph.levels[graph.groupByPerson.get(id)!]]));
 }
 
 export function getPartnersLabel(person: PersonRecord, peopleById: Map<string, PersonRecord>): string {

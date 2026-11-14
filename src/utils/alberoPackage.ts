@@ -77,27 +77,6 @@ export class AlberoPackageError extends Error {
   }
 }
 
-interface SerializedMediaAssetRecord {
-  version: typeof MEDIA_ASSET_RECORD_VERSION;
-  id: string;
-  personId: string;
-  role: MediaAssetRole;
-  name: string;
-  mimeType: string;
-  size: number;
-  createdAt: string;
-  updatedAt: string;
-  data: string;
-}
-
-interface AlberoPackageDocument {
-  format: typeof ALBERO_PACKAGE_FORMAT;
-  version: typeof ALBERO_PACKAGE_VERSION;
-  exportedAt: string;
-  snapshot: FamilyTreeSnapshot;
-  assets: SerializedMediaAssetRecord[];
-}
-
 interface ResolvedAlberoPackageOptions extends AlberoPackageLimits {
   allowedMimeTypes: readonly string[];
   exportedAt: string;
@@ -508,113 +487,85 @@ async function blobToBytes(blob: Blob): Promise<Uint8Array> {
   });
 }
 
-function bytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  return Uint8Array.from(bytes).buffer;
-}
-
 function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  const chunkSize = 0x8000;
-
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-    binary += String.fromCharCode(
-      ...Array.from(bytes.subarray(offset, offset + chunkSize)),
-    );
-  }
-
-  return btoa(binary);
+  const native = (bytes as Uint8Array & { toBase64?: () => string }).toBase64;
+  return native
+    ? native.call(bytes)
+    : btoa(String.fromCharCode(...bytes));
 }
 
-function decodedBase64Size(value: string): number {
-  if (value.length === 0) {
-    return 0;
-  }
-
+function base64ToBytes(value: string, expectedSize: number): Uint8Array<ArrayBuffer> {
   const padding = value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0;
-  return (value.length / 4) * 3 - padding;
-}
-
-function base64ToBytes(value: string): Uint8Array {
+  const firstNonAlphabet = /[^A-Za-z0-9+/]/u.exec(value);
   if (
     value.length % 4 !== 0 ||
-    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(value)
+    (firstNonAlphabet && firstNonAlphabet.index !== value.length - padding)
   ) {
     packageError("INVALID_ASSET", "Media asset data is not valid base64.");
   }
+  if ((value.length / 4) * 3 - padding !== expectedSize) {
+    packageError("INVALID_ASSET", "Media asset data size does not match metadata.");
+  }
 
-  let binary: string;
   try {
-    binary = atob(value);
+    const native = (Uint8Array as Uint8ArrayConstructor & {
+      fromBase64?: (input: string) => Uint8Array<ArrayBuffer>;
+    }).fromBase64;
+    if (native) {
+      return native.call(Uint8Array, value);
+    }
+
+    const bytes = new Uint8Array(expectedSize);
+    const chunkSize = 64 * 1024;
+    for (let offset = 0; offset < value.length; offset += chunkSize) {
+      const binary = atob(value.slice(offset, offset + chunkSize));
+      const byteOffset = (offset / 4) * 3;
+      for (let index = 0; index < binary.length; index += 1) {
+        bytes[byteOffset + index] = binary.charCodeAt(index);
+      }
+    }
+    return bytes;
   } catch (error) {
     packageError("INVALID_ASSET", "Media asset data is not valid base64.", error);
   }
-
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes;
 }
 
-async function readStreamWithLimit(
-  stream: ReadableStream<Uint8Array>,
-  maxBytes: number,
-): Promise<Uint8Array> {
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
+function limitBytes(maxBytes: number, label: string) {
   let total = 0;
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-
-      total += value.byteLength;
+  return new TransformStream<Uint8Array<ArrayBuffer>, Uint8Array<ArrayBuffer>>({
+    transform(chunk, controller) {
+      total += chunk.byteLength;
       if (total > maxBytes) {
-        await reader.cancel();
         packageError(
           "PACKAGE_TOO_LARGE",
-          `Archive expands beyond the ${maxBytes}-byte limit.`,
+          "Archive exceeds the " + maxBytes + "-byte " + label + " limit.",
         );
       }
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-
-  const bytes = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return bytes;
+      controller.enqueue(chunk);
+    },
+  });
 }
 
-async function compressGzip(
-  bytes: Uint8Array,
-  maxBytes: number,
-): Promise<Uint8Array> {
-  if (typeof CompressionStream === "undefined") {
-    packageError(
-      "COMPRESSION_UNAVAILABLE",
-      "This browser does not support gzip CompressionStream.",
-    );
-  }
-
-  const stream = new Blob([bytesToArrayBuffer(bytes)])
-    .stream()
-    .pipeThrough(new CompressionStream("gzip"));
-  return readStreamWithLimit(stream, maxBytes);
+function streamFromChunks(
+  chunks: AsyncGenerator<string>,
+): ReadableStream<Uint8Array<ArrayBuffer>> {
+  const encoder = new TextEncoder();
+  return new ReadableStream<Uint8Array<ArrayBuffer>>({
+    async pull(controller) {
+      const next = await chunks.next();
+      if (next.done) {
+        controller.close();
+      } else {
+        controller.enqueue(encoder.encode(next.value) as Uint8Array<ArrayBuffer>);
+      }
+    },
+    async cancel() {
+      await chunks.return(undefined);
+    },
+  });
 }
 
-async function decompressGzip(
-  bytes: Uint8Array,
-  maxBytes: number,
-): Promise<Uint8Array> {
+async function readArchiveText(compressed: Blob, maxBytes: number): Promise<string> {
   if (typeof DecompressionStream === "undefined") {
     packageError(
       "COMPRESSION_UNAVAILABLE",
@@ -622,51 +573,106 @@ async function decompressGzip(
     );
   }
 
+  const reader = compressed.stream()
+    .pipeThrough(new DecompressionStream("gzip"))
+    .pipeThrough(limitBytes(maxBytes, "uncompressed"))
+    .getReader();
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  const text: string[] = [];
+
   try {
-    const stream = new Blob([bytesToArrayBuffer(bytes)])
-      .stream()
-      .pipeThrough(new DecompressionStream("gzip"));
-    return await readStreamWithLimit(stream, maxBytes);
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      try {
+        text.push(decoder.decode(value, { stream: true }));
+      } catch (error) {
+        packageError("INVALID_JSON", "Archive text is not valid UTF-8.", error);
+      }
+    }
   } catch (error) {
+    await reader.cancel().catch(() => undefined);
     if (error instanceof AlberoPackageError) {
       throw error;
     }
     packageError("INVALID_COMPRESSION", "Archive is not valid gzip data.", error);
+  } finally {
+    reader.releaseLock();
   }
+
+  try {
+    text.push(decoder.decode());
+  } catch (error) {
+    packageError("INVALID_JSON", "Archive text is not valid UTF-8.", error);
+  }
+  return text.join("");
 }
 
-async function sourceToBytes(
-  source: AlberoPackageSource,
-  maxBytes: number,
-): Promise<Uint8Array> {
-  let bytes: Uint8Array;
-
-  if (source instanceof Blob) {
-    if (source.size > maxBytes) {
-      packageError(
-        "PACKAGE_TOO_LARGE",
-        `Archive exceeds the ${maxBytes}-byte compressed limit.`,
-      );
-    }
-    bytes = await blobToBytes(source);
-  } else if (source instanceof ArrayBuffer) {
-    bytes = new Uint8Array(source.slice(0));
-  } else if (source instanceof Uint8Array) {
-    bytes = Uint8Array.from(source);
-  } else {
+function sourceToBlob(source: AlberoPackageSource, maxBytes: number): Blob {
+  if (!(source instanceof Blob || source instanceof ArrayBuffer || source instanceof Uint8Array)) {
     packageError("WRONG_FORMAT", "Archive source must be a Blob or byte array.");
   }
-
-  if (bytes.byteLength === 0 || bytes.byteLength > maxBytes) {
-    packageError(
-      bytes.byteLength === 0 ? "WRONG_FORMAT" : "PACKAGE_TOO_LARGE",
-      bytes.byteLength === 0
-        ? "Archive file is empty."
-        : `Archive exceeds the ${maxBytes}-byte compressed limit.`,
-    );
+  const size = source instanceof Blob ? source.size : source.byteLength;
+  if (size === 0) {
+    packageError("WRONG_FORMAT", "Archive file is empty.");
+  }
+  if (size > maxBytes) {
+    packageError("PACKAGE_TOO_LARGE", "Archive exceeds the " + maxBytes + "-byte compressed limit.");
+  }
+  if (source instanceof Blob) {
+    return source;
+  }
+  if (source instanceof ArrayBuffer) {
+    return new Blob([source]);
   }
 
-  return bytes;
+  const bytes = source.buffer instanceof ArrayBuffer
+    ? new Uint8Array(source.buffer, source.byteOffset, source.byteLength)
+    : Uint8Array.from(source);
+  return new Blob([bytes]);
+}
+
+async function* serializeArchive(
+  snapshot: FamilyTreeSnapshot,
+  assets: readonly MediaAssetRecord[],
+  exportedAt: string,
+): AsyncGenerator<string> {
+  const header = JSON.stringify({
+    format: ALBERO_PACKAGE_FORMAT,
+    version: ALBERO_PACKAGE_VERSION,
+    exportedAt,
+  });
+  yield header.slice(0, -1) + ',"snapshot":{"version":' + snapshot.version;
+  yield ',"metadata":' + JSON.stringify(snapshot.metadata) + ',"people":[';
+  for (const [index, person] of snapshot.people.entries()) {
+    yield (index > 0 ? "," : "") + JSON.stringify(person);
+  }
+  yield ']},"assets":[';
+
+  // Each non-final chunk is divisible by three, so only the final chunk adds padding.
+  const chunkSize = 3 * 16 * 1024;
+  for (const [index, asset] of assets.entries()) {
+    const metadata = {
+      version: asset.version,
+      id: asset.id,
+      personId: asset.personId,
+      role: asset.role,
+      name: asset.name,
+      mimeType: asset.mimeType,
+      size: asset.size,
+      createdAt: asset.createdAt,
+      updatedAt: asset.updatedAt,
+    };
+    yield (index > 0 ? "," : "") + JSON.stringify(metadata).slice(0, -1) + ',"data":"';
+    for (let offset = 0; offset < asset.blob.size; offset += chunkSize) {
+      const part = asset.blob.slice(offset, offset + chunkSize);
+      yield bytesToBase64(await blobToBytes(part));
+    }
+    yield '"}';
+  }
+  yield "]}";
 }
 
 function validateSerializedAsset(
@@ -674,6 +680,7 @@ function validateSerializedAsset(
   index: number,
   options: ResolvedAlberoPackageOptions,
   personIds: ReadonlySet<string>,
+  remainingBytes: number,
 ): MediaAssetRecord {
   const path = `assets[${index}]`;
   if (!isPlainRecord(value)) {
@@ -702,24 +709,27 @@ function validateSerializedAsset(
   assertTimestamp(value.updatedAt, `${path}.updatedAt`, "INVALID_ASSET");
 
   if (
+    typeof value.size !== "number" ||
     !Number.isSafeInteger(value.size) ||
-    (value.size as number) <= 0 ||
-    (value.size as number) > options.maxAssetBytes
+    value.size <= 0 ||
+    value.size > options.maxAssetBytes
   ) {
     packageError(
-      (value.size as number) > options.maxAssetBytes
+      typeof value.size === "number" && value.size > options.maxAssetBytes
         ? "UNSAFE_MEDIA"
         : "INVALID_ASSET",
       `${path}.size is invalid or unsafe.`,
     );
   }
 
-  assertString(value.data, `${path}.data`, options.maxUncompressedBytes);
-  if (decodedBase64Size(value.data) !== value.size) {
-    packageError("INVALID_ASSET", `${path}.data size does not match metadata.`);
+  if (value.size > remainingBytes) {
+    packageError(
+      "PACKAGE_TOO_LARGE",
+      `Archive media exceeds the ${options.maxTotalAssetBytes}-byte total limit.`,
+    );
   }
-
-  const bytes = base64ToBytes(value.data);
+  assertString(value.data, `${path}.data`, options.maxUncompressedBytes);
+  const bytes = base64ToBytes(value.data, value.size);
   const record: MediaAssetRecord = {
     version: MEDIA_ASSET_RECORD_VERSION,
     id: value.id,
@@ -728,7 +738,7 @@ function validateSerializedAsset(
     name: value.name,
     mimeType: value.mimeType,
     size: value.size,
-    blob: new Blob([bytesToArrayBuffer(bytes)], { type: value.mimeType }),
+    blob: new Blob([bytes], { type: value.mimeType }),
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
   };
@@ -772,7 +782,6 @@ export async function exportAlberoPackage(
   const personIds = new Set(validatedSnapshot.people.map((person) => person.id));
   let totalAssetBytes = 0;
   const validatedAssets: MediaAssetRecord[] = [];
-  const serializedAssets: SerializedMediaAssetRecord[] = [];
 
   for (const asset of assets) {
     let validated: MediaAssetRecord;
@@ -812,44 +821,21 @@ export async function exportAlberoPackage(
 
   validateMediaAssetClosure(validatedSnapshot, validatedAssets);
 
-  for (const validated of validatedAssets) {
-    const bytes = await blobToBytes(validated.blob);
-    serializedAssets.push({
-      version: validated.version,
-      id: validated.id,
-      personId: validated.personId,
-      role: validated.role,
-      name: validated.name,
-      mimeType: validated.mimeType,
-      size: validated.size,
-      createdAt: validated.createdAt,
-      updatedAt: validated.updatedAt,
-      data: bytesToBase64(bytes),
-    });
-  }
-
-  const document: AlberoPackageDocument = {
-    format: ALBERO_PACKAGE_FORMAT,
-    version: ALBERO_PACKAGE_VERSION,
-    exportedAt: resolved.exportedAt,
-    snapshot: validatedSnapshot,
-    assets: serializedAssets,
-  };
-  const uncompressed = new TextEncoder().encode(JSON.stringify(document));
-  if (uncompressed.byteLength > resolved.maxUncompressedBytes) {
+  if (typeof CompressionStream === "undefined") {
     packageError(
-      "PACKAGE_TOO_LARGE",
-      `Archive exceeds the ${resolved.maxUncompressedBytes}-byte uncompressed limit.`,
+      "COMPRESSION_UNAVAILABLE",
+      "This browser does not support gzip CompressionStream.",
     );
   }
-
-  const compressed = await compressGzip(
-    uncompressed,
-    resolved.maxCompressedBytes,
-  );
-  return new Blob([bytesToArrayBuffer(compressed)], {
-    type: ALBERO_MIME_TYPE,
-  });
+  const stream = streamFromChunks(
+    serializeArchive(validatedSnapshot, validatedAssets, resolved.exportedAt),
+  )
+    .pipeThrough(limitBytes(resolved.maxUncompressedBytes, "uncompressed"))
+    .pipeThrough(new CompressionStream("gzip"))
+    .pipeThrough(limitBytes(resolved.maxCompressedBytes, "compressed"));
+  return new Response(stream, {
+    headers: { "Content-Type": ALBERO_MIME_TYPE },
+  }).blob();
 }
 
 export async function importAlberoPackage(
@@ -857,28 +843,19 @@ export async function importAlberoPackage(
   options?: AlberoPackageOptions,
 ): Promise<ImportedAlberoArchive> {
   const resolved = resolveOptions(options);
-  const compressed = await sourceToBytes(source, resolved.maxCompressedBytes);
-
-  if (compressed[0] !== 0x1f || compressed[1] !== 0x8b) {
+  const compressed = sourceToBlob(source, resolved.maxCompressedBytes);
+  const header = await blobToBytes(compressed.slice(0, 2));
+  if (header[0] !== 0x1f || header[1] !== 0x8b) {
     packageError("INVALID_COMPRESSION", "Archive is not gzip-compressed data.");
-  }
-
-  const uncompressed = await decompressGzip(
-    compressed,
-    resolved.maxUncompressedBytes,
-  );
-
-  let json: string;
-  try {
-    json = new TextDecoder("utf-8", { fatal: true }).decode(uncompressed);
-  } catch (error) {
-    packageError("INVALID_JSON", "Archive text is not valid UTF-8.", error);
   }
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(json);
+    parsed = JSON.parse(await readArchiveText(compressed, resolved.maxUncompressedBytes));
   } catch (error) {
+    if (error instanceof AlberoPackageError) {
+      throw error;
+    }
     packageError("INVALID_JSON", "Archive does not contain valid JSON.", error);
   }
 
@@ -917,16 +894,12 @@ export async function importAlberoPackage(
       index,
       resolved,
       personIds,
+      resolved.maxTotalAssetBytes - totalAssetBytes,
     );
 
     totalAssetBytes += asset.size;
-    if (totalAssetBytes > resolved.maxTotalAssetBytes) {
-      packageError(
-        "PACKAGE_TOO_LARGE",
-        `Archive media exceeds the ${resolved.maxTotalAssetBytes}-byte total limit.`,
-      );
-    }
     assets.push(asset);
+    parsed.assets[index] = null;
   }
 
   validateMediaAssetClosure(snapshot, assets);

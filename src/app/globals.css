@@ -396,19 +396,20 @@ textarea {
 }
 
 .family-tree-warnings {
-  position: absolute;
-  top: 12px;
-  left: 50%;
-  z-index: 30;
+  flex: none;
+  align-self: center;
   width: min(680px, calc(100% - 32px));
-  transform: translateX(-50%);
+  margin-block: 8px;
   border: 1px solid #f0b8b8;
   border-radius: 12px;
   background: #fffafa;
   padding: 10px 12px;
-  box-shadow: 0 12px 30px rgb(38 55 44 / 12%);
   color: #733c3c;
   font-size: 0.8125rem;
+}
+
+.family-tree-warnings + .family-tree-warnings {
+  margin-top: 0;
 }
 
 .family-tree-warnings strong {

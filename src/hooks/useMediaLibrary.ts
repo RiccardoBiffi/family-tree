@@ -1,17 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import {
-  createMediaAssetRecord,
-  type MediaAssetRecord,
-  type MediaAssetRole,
-} from "@/models/MediaAsset";
-import { MediaDB } from "@/utils/mediaDB";
-import {
-  isPersistenceCapabilityError,
-  type PersistenceStatus,
-} from "@/utils/persistence";
+import type { MediaAssetRecord, MediaAssetRole } from "@/models/MediaAsset";
 
 export type MediaAssetKind = "image" | "audio" | "video" | "pdf" | "file";
 
@@ -34,176 +25,80 @@ function getMediaKind(mimeType: string): MediaAssetKind {
   if (mimeType.startsWith("video/")) {
     return "video";
   }
-  if (mimeType === "application/pdf") {
-    return "pdf";
-  }
-  return "file";
+  return mimeType === "application/pdf" ? "pdf" : "file";
 }
 
-export function useMediaLibrary() {
-  const dbRef = useRef<MediaDB | null>(null);
-  const assetsRef = useRef<MediaAssetRecord[]>([]);
-  const [assets, setAssets] = useState<MediaAssetRecord[]>([]);
-  const [assetUrls, setAssetUrls] = useState<ReadonlyMap<string, string>>(
-    () => new Map(),
-  );
-  const [isReady, setIsReady] = useState(false);
+const emptyViews: ReadonlyMap<string, MediaAssetView> = new Map();
+
+export function useMediaViews(
+  ids: readonly string[],
+  readAssets: (ids: readonly string[]) => Promise<MediaAssetRecord[]>,
+  epoch: number,
+) {
+  const views = useRef(new Map<string, MediaAssetView>());
+  const previousEpoch = useRef(epoch);
+  const [result, setResult] = useState({ epoch, views: emptyViews });
   const [error, setError] = useState<Error | null>(null);
-  const [persistenceStatus, setPersistenceStatus] =
-    useState<PersistenceStatus>("durable");
-
-  if (!dbRef.current) {
-    dbRef.current = new MediaDB();
-  }
-
-  const updateAssets = useCallback(
-    (nextAssets: readonly MediaAssetRecord[]) => {
-      const copiedAssets = Array.from(nextAssets);
-      assetsRef.current = copiedAssets;
-      setAssets(copiedAssets);
-    },
-    [],
-  );
-
-  const refreshAssets = useCallback(async () => {
-    if (
-      persistenceStatus === "volatile" ||
-      !dbRef.current!.isAvailable()
-    ) {
-      setPersistenceStatus("volatile");
-      return assetsRef.current;
-    }
-
-    try {
-      const nextAssets = await dbRef.current!.list();
-      updateAssets(nextAssets);
-      setError(null);
-      setIsReady(true);
-      return nextAssets;
-    } catch (cause) {
-      if (!isPersistenceCapabilityError(cause)) {
-        throw cause;
-      }
-
-      setPersistenceStatus("volatile");
-      setError(null);
-      setIsReady(true);
-      return assetsRef.current;
-    }
-  }, [persistenceStatus, updateAssets]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    void dbRef.current!
-      .list()
-      .then((nextAssets) => {
-        if (!cancelled) {
-          updateAssets(nextAssets);
-          setIsReady(true);
-        }
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled) {
-          if (isPersistenceCapabilityError(cause)) {
-            setPersistenceStatus("volatile");
-            setError(null);
-          } else {
-            setError(cause instanceof Error ? cause : new Error(String(cause)));
-          }
-          setIsReady(true);
-        }
-      });
-
+    const cache = views.current;
+    const revoke = URL.revokeObjectURL?.bind(URL);
     return () => {
-      cancelled = true;
+      for (const view of cache.values()) {
+        revoke?.(view.url);
+      }
+      cache.clear();
     };
-  }, [updateAssets]);
+  }, []);
 
   useEffect(() => {
     if (typeof URL.createObjectURL !== "function") {
-      setAssetUrls(new Map());
       return;
     }
-
-    const urls = new Map(
-      assets.map((asset) => [asset.id, URL.createObjectURL(asset.blob)]),
-    );
-    setAssetUrls(urls);
-
-    return () => {
-      for (const url of urls.values()) {
-        URL.revokeObjectURL(url);
+    const cache = views.current;
+    const desired = new Set(ids);
+    const reset = previousEpoch.current !== epoch;
+    previousEpoch.current = epoch;
+    let changed = reset;
+    for (const [id, view] of cache) {
+      if (reset || !desired.has(id)) {
+        URL.revokeObjectURL?.(view.url);
+        cache.delete(id);
+        changed = true;
       }
-    };
-  }, [assets]);
-
-  const viewsById = useMemo(() => {
-    const views = new Map<string, MediaAssetView>();
-
-    for (const asset of assets) {
-      const url = assetUrls.get(asset.id);
-      if (!url) {
-        continue;
-      }
-
-      views.set(asset.id, {
-        id: asset.id,
-        fileName: asset.name,
-        kind: getMediaKind(asset.mimeType),
-        mimeType: asset.mimeType,
-        role: asset.role,
-        url,
-      });
     }
-
-    return views;
-  }, [assets, assetUrls]);
-
-  const replaceAssets = useCallback(
-    async (nextAssets: readonly MediaAssetRecord[]) => {
-      if (
-        persistenceStatus === "durable" &&
-        dbRef.current!.isAvailable()
-      ) {
-        try {
-          await dbRef.current!.replaceAll(nextAssets);
-          setError(null);
-        } catch (cause) {
-          if (!isPersistenceCapabilityError(cause)) {
-            throw cause;
-          }
-
-          setPersistenceStatus("volatile");
-          setError(null);
-        }
-      } else {
-        setPersistenceStatus("volatile");
+    if (changed) {
+      setResult({ epoch, views: new Map(cache) });
+    }
+    const missing = [...desired].filter((id) => !cache.has(id));
+    if (missing.length === 0) {
+      setError(null);
+      return;
+    }
+    let active = true;
+    void readAssets(missing).then((assets) => {
+      if (!active) {
+        return;
       }
-      updateAssets(nextAssets);
-    },
-    [persistenceStatus, updateAssets],
-  );
+      for (const asset of assets) {
+        cache.set(asset.id, {
+          id: asset.id,
+          fileName: asset.name,
+          kind: getMediaKind(asset.mimeType),
+          mimeType: asset.mimeType,
+          role: asset.role,
+          url: URL.createObjectURL(asset.blob),
+        });
+      }
+      setError(null);
+      setResult({ epoch, views: new Map(cache) });
+    }).catch((cause: unknown) => {
+      if (active) {
+        setError(cause instanceof Error ? cause : new Error(String(cause)));
+      }
+    });
+    return () => { active = false; };
+  }, [epoch, ids, readAssets]);
 
-  const createAssetFromFile = useCallback(
-    (personId: string, role: MediaAssetRole, file: File) =>
-      createMediaAssetRecord({
-        personId,
-        role,
-        name: file.name,
-        blob: file,
-      }),
-    [],
-  );
-
-  return {
-    assets,
-    viewsById,
-    isReady,
-    error,
-    persistenceStatus,
-    refreshAssets,
-    replaceAssets,
-    createAssetFromFile,
-  };
+  return { viewsById: result.epoch === epoch ? result.views : emptyViews, error };
 }

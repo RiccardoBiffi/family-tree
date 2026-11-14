@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   flexRender,
   getCoreRowModel,
@@ -20,6 +20,7 @@ import {
   matchesPersonQuery,
 } from "@/utils/familyTree";
 import { PersonGlyph } from "@/components/PersonGlyph";
+import { useViewportSize, useVirtualRows } from "@/hooks/useVirtualRows";
 
 interface PeopleTableProps {
   people: PersonRecord[];
@@ -39,6 +40,9 @@ const INITIAL_COLUMN_ORDER: ColumnOrderState = [
   "notes",
 ];
 
+const HEADER_HEIGHT = 56;
+const ROW_HEIGHT = 62;
+
 function countLabel(total: number): string {
   return total === 1 ? "1 persona" : `${total} persone`;
 }
@@ -52,6 +56,25 @@ function getLegalName(person: PersonRecord): string {
 
 function formatTableDate(value: string | null): string {
   return formatDateLabel(value).replace(/^0/, "");
+}
+
+function TableText({ value, muted = false }: { value: string; muted?: boolean }) {
+  return (
+    <span
+      className={`line-clamp-2 break-words leading-5 ${muted ? "text-[#526158]" : ""}`}
+      title={value}
+    >
+      {value}
+    </span>
+  );
+}
+
+function RowSpacer({ columns, height }: { columns: number; height: number }) {
+  return height > 0 ? (
+    <tr aria-hidden="true" role="presentation">
+      <td colSpan={columns} style={{ height, padding: 0 }} />
+    </tr>
+  ) : null;
 }
 
 function PersonAvatar({ person }: { person: PersonRecord }) {
@@ -124,7 +147,9 @@ export function PeopleTable({ people, query, onSelectPerson }: PeopleTableProps)
     [people],
   );
   const filteredPeople = useMemo(
-    () => people.filter((person) => matchesPersonQuery(person, deferredQuery)),
+    () => deferredQuery.trim()
+      ? people.filter((person) => matchesPersonQuery(person, deferredQuery))
+      : people,
     [deferredQuery, people],
   );
 
@@ -173,12 +198,13 @@ export function PeopleTable({ people, query, onSelectPerson }: PeopleTableProps)
         accessorFn: (row) => getLegalName(row),
         cell: ({ row }) => (
           <button
-            className="group flex min-h-11 items-center gap-3 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
+            className="group flex min-h-11 w-full items-center gap-3 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
+            data-virtual-item={0}
             onClick={() => onSelectPerson(row.original.id)}
             type="button"
           >
             <PersonAvatar person={row.original} />
-            <span className="font-semibold text-[#152219] transition group-hover:text-[#0c3b24]">
+            <span className="line-clamp-2 min-w-0 break-words font-semibold leading-5 text-[#152219] transition group-hover:text-[#0c3b24]" title={getLegalName(row.original)}>
               {getLegalName(row.original)}
             </span>
           </button>
@@ -197,12 +223,12 @@ export function PeopleTable({ people, query, onSelectPerson }: PeopleTableProps)
       {
         accessorKey: "birthPlace",
         header: "Luogo",
-        cell: ({ row }) => row.original.birthPlace ?? "—",
+        cell: ({ row }) => <TableText value={row.original.birthPlace ?? "—"} />,
       },
       {
         accessorKey: "profession",
         header: "Professione",
-        cell: ({ row }) => row.original.profession ?? "—",
+        cell: ({ row }) => <TableText value={row.original.profession ?? "—"} />,
       },
       {
         id: "childrenCount",
@@ -229,16 +255,12 @@ export function PeopleTable({ people, query, onSelectPerson }: PeopleTableProps)
         id: "partners",
         header: "Partner",
         accessorFn: (row) => getPartnersLabel(row, peopleById),
-        cell: ({ row }) => getPartnersLabel(row.original, peopleById),
+        cell: ({ row }) => <TableText value={getPartnersLabel(row.original, peopleById)} />,
       },
       {
         accessorKey: "notes",
         header: "Note",
-        cell: ({ row }) => (
-          <span className="block min-w-64 max-w-sm leading-5 text-[#526158]">
-            {row.original.notes ?? "—"}
-          </span>
-        ),
+        cell: ({ row }) => <TableText muted value={row.original.notes ?? "—"} />,
       },
     ],
     [onSelectPerson, peopleById],
@@ -260,6 +282,22 @@ export function PeopleTable({ people, query, onSelectPerson }: PeopleTableProps)
     getSortedRowModel: getSortedRowModel(),
   });
   const orderedColumns = table.getAllLeafColumns();
+  const rows = table.getRowModel().rows;
+  const columnCount = table.getVisibleLeafColumns().length;
+  const offsets = useMemo(
+    () => Array.from({ length: rows.length + 1 }, (_, index) => index * ROW_HEIGHT),
+    [rows.length],
+  );
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const { height } = useViewportSize(viewportRef);
+  const { visibleRows, totalHeight, onRowBlur, onRowFocus, onRowKeyDown } = useVirtualRows(
+    viewportRef,
+    height,
+    offsets,
+    HEADER_HEIGHT,
+    undefined,
+    JSON.stringify([deferredQuery, sorting]),
+  );
 
   const moveColumn = (columnId: string, offset: -1 | 1) => {
     setColumnOrder((currentOrder) => {
@@ -368,11 +406,17 @@ export function PeopleTable({ people, query, onSelectPerson }: PeopleTableProps)
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto overscroll-contain">
-        <table className="w-full min-w-[920px] border-separate border-spacing-0 text-left">
+      <div
+        className="min-h-0 flex-1 overflow-auto overscroll-contain [overflow-anchor:none]"
+        onBlurCapture={onRowBlur}
+        onFocusCapture={onRowFocus}
+        onKeyDown={onRowKeyDown}
+        ref={viewportRef}
+      >
+        <table aria-rowcount={rows.length + 1} className="w-full table-fixed border-separate border-spacing-0 text-left" style={{ minWidth: Math.max(920, columnCount * 155) }}>
           <thead className="sticky top-0 z-10 bg-[#fbfcfb]">
             {table.getHeaderGroups().map((headerGroup) => (
-              <tr key={headerGroup.id}>
+              <tr aria-rowindex={1} key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
                   const sorted = header.column.getIsSorted();
                   const ariaSort =
@@ -383,6 +427,7 @@ export function PeopleTable({ people, query, onSelectPerson }: PeopleTableProps)
                       aria-sort={ariaSort}
                       className="h-14 border-b border-[#dfe5df] px-5 text-sm font-semibold text-[#27362c] first:border-r first:border-[#dfe5df] first:pl-9 last:pr-9"
                       key={header.id}
+                      style={header.column.id === "displayName" ? { width: 240 } : undefined}
                     >
                       {header.isPlaceholder ? null : header.column.getCanSort() ? (
                         <button
@@ -407,22 +452,30 @@ export function PeopleTable({ people, query, onSelectPerson }: PeopleTableProps)
             ))}
           </thead>
           <tbody className="bg-white">
-            {table.getRowModel().rows.map((row) => (
-              <tr className="group transition-colors hover:bg-[#f7f9f6]" key={row.id}>
-                {row.getVisibleCells().map((cell) => (
-                  <td
-                    className="h-[62px] border-b border-[#e5eae5] px-5 text-sm text-[#34443a] first:border-r first:border-[#e0e6e0] first:pl-9 last:pr-9"
-                    key={cell.id}
-                  >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
-              </tr>
-            ))}
+            {visibleRows.map((index, position) => {
+              const row = rows[index];
+              const previous = position === 0 ? 0 : visibleRows[position - 1] + 1;
+              return (
+                <Fragment key={row.id}>
+                  <RowSpacer columns={columnCount} height={offsets[index] - offsets[previous]} />
+                  <tr aria-rowindex={index + 2} className="group transition-colors hover:bg-[#f7f9f6]" data-virtual-row={index}>
+                    {row.getVisibleCells().map((cell) => (
+                      <td
+                        className="h-[62px] border-b border-[#e5eae5] px-5 text-sm text-[#34443a] first:border-r first:border-[#e0e6e0] first:pl-9 last:pr-9"
+                        key={cell.id}
+                      >
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </tr>
+                </Fragment>
+              );
+            })}
+            <RowSpacer columns={columnCount} height={totalHeight - (offsets[(visibleRows.at(-1) ?? -1) + 1] ?? 0)} />
           </tbody>
         </table>
 
-        {table.getRowModel().rows.length === 0 ? (
+        {rows.length === 0 ? (
           <div className="flex min-h-72 items-center justify-center px-6 text-center">
             <div>
               <p className="font-[family-name:var(--font-display)] text-2xl text-[#17351f]">

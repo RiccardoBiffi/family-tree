@@ -310,3 +310,24 @@
 - Verification passes: Vercel JSON/build-command validation, Next production
   build, manifest parsing, ESLint, TypeScript, offline build, structural checks,
   and `git diff --check`.
+
+# Integrità e prestazioni dell’archivio
+
+- [x] Migrare lo snapshot legacy e coordinare le scritture nella stessa transazione IndexedDB.
+- [x] Correggere importazione `.albero` di grandi allegati e ridurne le copie in memoria durante l’export.
+- [x] Correggere date e generazioni, separare layout e ricerca e limitare il DOM delle viste.
+- [x] Eseguire test di regressione, build di rilascio e confronto browser desktop/mobile su fixture sintetiche.
+
+## Esito delle verifiche
+
+- Passano lint, TypeScript, 68 test Vitest, build Next.js e build standalone e
+  accettazione Chrome di migrazione, concorrenza tra schede, errori di storage,
+  esportazione temporanea e genealogia da 10.000 persone.
+- Su archivio da 3.000 persone, Chrome a 390 × 844, mediana di cinque prove.
+  Diagramma 6.066 → 735 ms, 131,06 → 23,17 MiB, 60.145 → 5.518 nodi.
+  Tabella 4.704 → 144 ms, 43,87 → 13,71 MiB, 51.133 → 383 nodi.
+  Timeline 2.098 → 123 ms, 23,26 → 5,50 MiB, 69.293 → 487 nodi.
+- Su 32 MiB di allegati sintetici, l’export passa da 2.510 a 1.672 ms
+  e l’importazione da zero a cinque successi su cinque.
+- L’HTML offline è un singolo file da 599.628 byte senza risorse esterne o
+  media incorporati. La minimappa mantiene un elemento SVG per persona.

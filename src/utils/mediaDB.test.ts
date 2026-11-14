@@ -7,7 +7,7 @@ import { MediaDB, MediaDBUnavailableError } from "@/utils/mediaDB";
 
 interface FakeDatabaseState {
   records: Map<string, MediaAssetRecord>;
-  storeCreated: boolean;
+  stores: Set<string>;
   transactionModes: IDBTransactionMode[];
 }
 
@@ -113,20 +113,20 @@ class FakeDatabase {
 
   get objectStoreNames() {
     return {
-      contains: (name: string) => name === "assets" && this.state.storeCreated,
+      contains: (name: string) => this.state.stores.has(name),
     } as DOMStringList;
   }
 
   createObjectStore(name: string): IDBObjectStore {
-    if (name !== "assets") {
-      throw new Error(`Unexpected object store: ${name}`);
-    }
-    this.state.storeCreated = true;
-    return {} as IDBObjectStore;
+    this.state.stores.add(name);
+    return {
+      indexNames: { contains: () => false },
+      createIndex() {},
+    } as unknown as IDBObjectStore;
   }
 
   transaction(_name: string, mode: IDBTransactionMode): IDBTransaction {
-    if (!this.state.storeCreated) {
+    if (!this.state.stores.has("assets")) {
       throw new DOMException("Object store is missing.", "NotFoundError");
     }
     this.state.transactionModes.push(mode);
@@ -153,7 +153,7 @@ class FakeIndexedDBFactory {
       if (!state) {
         state = {
           records: new Map(),
-          storeCreated: false,
+          stores: new Set(),
           transactionModes: [],
         };
         this.databases.set(name, state);
@@ -220,7 +220,7 @@ describe("MediaDB", () => {
     await db.put(photo);
     await db.put(attachment);
 
-    expect(factory.state(databaseName).storeCreated).toBe(true);
+    expect(factory.state(databaseName).stores).toEqual(new Set(["archive", "assets"]));
     expect(await db.get(photo.id)).toMatchObject({
       id: photo.id,
       personId: "p1",

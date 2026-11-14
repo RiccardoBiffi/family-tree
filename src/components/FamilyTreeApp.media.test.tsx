@@ -1,16 +1,10 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const archiveMocks = vi.hoisted(() => ({
   importAlberoPackage: vi.fn(),
-}));
-
-const mediaMocks = vi.hoisted(() => ({
-  createAssetFromFile: vi.fn(),
-  refreshAssets: vi.fn(async (): Promise<MediaAssetRecord[]> => []),
-  replaceAssets: vi.fn(async () => undefined),
 }));
 
 vi.mock("@xyflow/react", async () => {
@@ -39,6 +33,7 @@ vi.mock("@xyflow/react", async () => {
     ),
     Background: () => <div data-testid="flow-background" />,
     Controls: () => <div data-testid="flow-controls" />,
+    ControlButton: () => null,
     MiniMap: () => <div data-testid="flow-minimap" />,
     Handle: () => <div data-testid="flow-handle" />,
     MarkerType: {
@@ -52,38 +47,6 @@ vi.mock("@xyflow/react", async () => {
     },
   };
 });
-
-vi.mock("@/hooks/useMediaLibrary", () => ({
-  useMediaLibrary: () => ({
-    ...mediaMocks,
-    error: null,
-    isReady: true,
-    viewsById: new Map([
-      [
-        "user-p1-photo",
-        {
-          fileName: "ritratto-giovanni.webp",
-          id: "user-p1-photo",
-          kind: "image",
-          mimeType: "image/webp",
-          role: "photo",
-          url: "blob:user-p1-photo",
-        },
-      ],
-      [
-        "user-p1-audio",
-        {
-          fileName: "intervista-giovanni.wav",
-          id: "user-p1-audio",
-          kind: "audio",
-          mimeType: "audio/wav",
-          role: "attachment",
-          url: "blob:user-p1-audio",
-        },
-      ],
-    ]),
-  }),
-}));
 
 vi.mock("@/utils/alberoPackage", async (importOriginal) => {
   const actual =
@@ -105,6 +68,7 @@ import {
   type MediaAssetRecord,
   type MediaAssetRole,
 } from "@/models/MediaAsset";
+import { mockArchiveDB } from "@/test/mockArchiveDB";
 
 function withUserMedia(
   snapshot: FamilyTreeSnapshot,
@@ -121,18 +85,6 @@ function withUserMedia(
         : person,
     ),
   };
-}
-
-function readStoredSnapshot(): FamilyTreeSnapshot {
-  return JSON.parse(
-    window.localStorage.getItem(FAMILY_TREE_STORAGE_KEY) ?? "null",
-  ) as FamilyTreeSnapshot;
-}
-
-function storedPerson(personId: string) {
-  return readStoredSnapshot().people.find(
-    (person) => person.id === personId,
-  );
 }
 
 function createTestAsset({
@@ -165,14 +117,23 @@ function createTestAsset({
 }
 
 describe("FamilyTreeApp user media", () => {
+  let database: ReturnType<typeof mockArchiveDB>;
   beforeEach(() => {
-    window.localStorage.clear();
+    database = mockArchiveDB();
+    vi.mocked(window.matchMedia).mockImplementation((query) => ({
+      matches: false, media: query, onchange: null,
+      addEventListener() {}, removeEventListener() {},
+      addListener() {}, removeListener() {}, dispatchEvent: () => true,
+    }));
     archiveMocks.importAlberoPackage.mockReset();
-    mediaMocks.createAssetFromFile.mockReset();
-    mediaMocks.refreshAssets.mockReset();
-    mediaMocks.refreshAssets.mockResolvedValue([]);
-    mediaMocks.replaceAssets.mockReset();
-    mediaMocks.replaceAssets.mockResolvedValue(undefined);
+    vi.stubGlobal("URL", Object.assign(class extends URL {}, {
+      createObjectURL: vi.fn(() => "blob:test"),
+      revokeObjectURL: vi.fn(),
+    }));
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("removes an existing multimedia item and adds a local PDF in the same atomic save", async () => {
@@ -191,21 +152,11 @@ describe("FamilyTreeApp user media", () => {
       name: "intervista-giovanni.wav",
       mimeType: "audio/wav",
     });
-    const pdfAsset = createTestAsset({
-      id: "p1-documento",
-      personId: "p1",
-      role: "attachment",
-      name: "documento-rinaldi.pdf",
-      mimeType: "application/pdf",
-    });
     const pdfFile = new File(["pdf"], "documento-rinaldi.pdf", {
       type: "application/pdf",
     });
-    mediaMocks.refreshAssets.mockResolvedValue([
-      photoAsset,
-      audioAsset,
-    ]);
-    mediaMocks.createAssetFromFile.mockReturnValue(pdfAsset);
+    database.assets.set(photoAsset.id, photoAsset);
+    database.assets.set(audioAsset.id, audioAsset);
     window.localStorage.setItem(
       FAMILY_TREE_STORAGE_KEY,
       JSON.stringify(withUserMedia(seedFamilyTree)),
@@ -234,20 +185,16 @@ describe("FamilyTreeApp user media", () => {
       screen.getByRole("button", { name: "Salva modifiche" }),
     );
 
-    await waitFor(() => {
-      expect(storedPerson("p1")?.attachments).toEqual([
-        "media:p1-documento",
-      ]);
-    });
-    expect(mediaMocks.createAssetFromFile).toHaveBeenCalledWith(
-      "p1",
-      "attachment",
-      pdfFile,
-    );
-    expect(mediaMocks.replaceAssets).toHaveBeenLastCalledWith([
-      photoAsset,
-      pdfAsset,
-    ]);
+
+    const details = await screen.findByRole("dialog", { name: /Giovanni Rinaldi/i });
+    expect(await within(details).findByText(pdfFile.name)).toBeInTheDocument();
+    const stored = database.snapshot?.people.find(({ id }) => id === "p1");
+    const pdf = [...database.assets.values()].find(({ name }) => name === pdfFile.name);
+    expect(pdf?.blob).toBe(pdfFile);
+    expect(stored?.attachments).toEqual([`media:${pdf?.id}`]);
+    expect(database.commit.mock.lastCall?.[2]).toEqual({ put: [pdf], remove: [audioAsset.id] });
+    expect(database.assets.get(photoAsset.id)).toBe(photoAsset);
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(3);
   });
 
   it("persists local multimedia while creating a person", async () => {
@@ -255,19 +202,6 @@ describe("FamilyTreeApp user media", () => {
     const audioFile = new File(["audio"], "intervista.mp3", {
       type: "audio/mpeg",
     });
-    let createdAsset: MediaAssetRecord | null = null;
-    mediaMocks.createAssetFromFile.mockImplementation(
-      (personId: string) => {
-        createdAsset = createTestAsset({
-          id: "nuova-intervista",
-          personId,
-          role: "attachment",
-          name: audioFile.name,
-          mimeType: audioFile.type,
-        });
-        return createdAsset;
-      },
-    );
     window.localStorage.setItem(
       FAMILY_TREE_STORAGE_KEY,
       JSON.stringify(seedFamilyTree),
@@ -284,16 +218,13 @@ describe("FamilyTreeApp user media", () => {
     );
     await user.click(screen.getByRole("button", { name: "Crea persona" }));
 
-    await waitFor(() => {
-      const person = readStoredSnapshot().people.find(
-        (candidate) => candidate.name === "Livia",
-      );
-      expect(person?.attachments).toEqual(["media:nuova-intervista"]);
-      expect(createdAsset?.personId).toBe(person?.id);
-    });
-    expect(mediaMocks.replaceAssets).toHaveBeenLastCalledWith([
-      createdAsset,
-    ]);
+
+    const details = await screen.findByRole("dialog", { name: "Livia Rinaldi" });
+    expect(await within(details).findByText(audioFile.name)).toBeInTheDocument();
+    const person = database.snapshot?.people.find(({ name }) => name === "Livia");
+    const [storedAsset] = database.assets.values();
+    expect(person?.attachments).toEqual([`media:${storedAsset.id}`]);
+    expect(storedAsset.personId).toBe(person?.id);
   });
 
   it("imports a media-free archive without inventing multimedia", async () => {
@@ -332,17 +263,13 @@ describe("FamilyTreeApp user media", () => {
       }),
     );
 
-    expect(
-      await screen.findByRole("status", {
-        name: "",
-      }),
-    ).toHaveTextContent("Archivio importato.");
+    expect(await screen.findByText("Archivio importato.")).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByText("Archivio Importata")).toBeInTheDocument();
-      expect(storedPerson("p1")?.photo).toBeNull();
-      expect(storedPerson("p1")?.attachments).toBeNull();
+      expect(database.snapshot?.people.find(({ id }) => id === "p1")?.photo).toBeNull();
+      expect(database.snapshot?.people.find(({ id }) => id === "p1")?.attachments).toBeNull();
     });
-    expect(mediaMocks.replaceAssets).toHaveBeenCalledWith([]);
+    expect(database.commit.mock.lastCall?.[2]).toEqual({ replace: [] });
 
     unmount();
     render(<FamilyTreeApp mode="admin" />);
@@ -350,8 +277,8 @@ describe("FamilyTreeApp user media", () => {
       await screen.findByText("Archivio Importata"),
     ).toBeInTheDocument();
     await waitFor(() => {
-      expect(storedPerson("p1")?.photo).toBeNull();
-      expect(storedPerson("p1")?.attachments).toBeNull();
+      expect(database.snapshot?.people.find(({ id }) => id === "p1")?.photo).toBeNull();
+      expect(database.snapshot?.people.find(({ id }) => id === "p1")?.attachments).toBeNull();
     });
   });
 });

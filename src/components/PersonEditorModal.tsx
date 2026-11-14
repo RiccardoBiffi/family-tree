@@ -29,6 +29,7 @@ export interface PersonMediaChanges {
 
 export interface PersonEditorModalProps {
   mode: "create" | "edit";
+  busy?: boolean;
   people: PersonRecord[];
   person: PersonRecord;
   existingMedia?: readonly PersonMediaView[];
@@ -207,6 +208,7 @@ function RelationDropdown({
 
 export function PersonEditorModal({
   mode,
+  busy = false,
   people,
   person,
   existingMedia = [],
@@ -271,6 +273,9 @@ export function PersonEditorModal({
     ],
   );
   const requestClose = useCallback(() => {
+    if (busy) {
+      return;
+    }
     if (
       hasUnsavedChanges &&
       !window.confirm(
@@ -281,7 +286,7 @@ export function PersonEditorModal({
     }
 
     onClose();
-  }, [hasUnsavedChanges, onClose]);
+  }, [busy, hasUnsavedChanges, onClose]);
   const dialogRef = useDialogFocus<HTMLDivElement>(true, requestClose, firstInputRef);
 
   const availableRelations = useMemo(
@@ -334,6 +339,7 @@ export function PersonEditorModal({
     >
       <div
         aria-labelledby={titleId}
+        aria-busy={busy}
         aria-modal="true"
         className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-[24px] border border-[#dfe5df] bg-white text-[#152219] shadow-[0_30px_100px_rgba(6,21,13,0.28)] outline-none"
         ref={dialogRef}
@@ -423,6 +429,7 @@ export function PersonEditorModal({
                 {mode === "edit" && draft.id && onDelete ? (
                   <button
                     className="min-h-11 rounded-xl border border-[#d8a5a5] bg-white px-3 text-sm font-medium text-[#8b3030] outline-none transition hover:border-[#b86c6c] focus-visible:ring-2 focus-visible:ring-[#8b3030] focus-visible:ring-offset-2"
+                    disabled={busy}
                     onClick={() => onDelete(draft.id)}
                     type="button"
                   >
@@ -431,6 +438,7 @@ export function PersonEditorModal({
                 ) : null}
                 <button
                   className="min-h-11 rounded-xl bg-[#0c3b24] px-4 text-sm font-semibold text-white outline-none transition hover:bg-[#164d31] focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
+                  disabled={busy}
                   form={formId}
                   type="submit"
                 >
@@ -446,6 +454,9 @@ export function PersonEditorModal({
           id={formId}
           onSubmit={(event) => {
             event.preventDefault();
+            if (busy) {
+              return;
+            }
             onSave(
               {
                 ...draft,

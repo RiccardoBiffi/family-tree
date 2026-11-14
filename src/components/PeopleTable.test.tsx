@@ -100,3 +100,38 @@ describe("PeopleTable column chooser", () => {
     ).not.toBeInTheDocument();
   });
 });
+
+describe("PeopleTable scrolling", () => {
+  it("keeps a small DOM window and can focus, open and filter a person outside it", async () => {
+    const user = userEvent.setup();
+    const onSelectPerson = vi.fn();
+    const people = Array.from({ length: 3000 }, (_, index) => ({
+      ...seedFamilyTree.people[0],
+      id: `table-person-${index}`,
+      name: `Persona ${index.toString().padStart(4, "0")}`,
+      surname: null,
+    }));
+    const { rerender } = render(
+      <PeopleTable onSelectPerson={onSelectPerson} people={people} query="" />,
+    );
+    const table = screen.getByRole("table");
+
+    expect(table).toHaveAttribute("aria-rowcount", "3001");
+    expect(within(table).getAllByRole("row").length).toBeLessThan(50);
+    expect(within(table).queryByRole("button", { name: "Persona 2999" })).not.toBeInTheDocument();
+
+    await user.click(within(table).getByRole("button", { name: "Persona 0000" }));
+    await user.keyboard("{End}");
+    const lastPerson = within(table).getByRole("button", { name: "Persona 2999" });
+    expect(lastPerson).toHaveFocus();
+    expect(lastPerson.closest("tr")).toHaveAttribute("aria-rowindex", "3001");
+    await user.tab({ shift: true });
+    expect(within(table).getByRole("button", { name: "Persona 2998" })).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(onSelectPerson).toHaveBeenLastCalledWith("table-person-2998");
+
+    rerender(<PeopleTable onSelectPerson={onSelectPerson} people={people} query="Persona 0256" />);
+    expect(await within(table).findByRole("button", { name: "Persona 0256" })).toBeVisible();
+    expect(table).toHaveAttribute("aria-rowcount", "2");
+  });
+});

@@ -1,24 +1,30 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import {
   Background,
+  ControlButton,
   Controls,
+  getViewportForBounds,
   MiniMap,
+  Position,
   ReactFlow,
   type Edge,
   type Node,
+  type ReactFlowInstance,
 } from "@xyflow/react";
 
 import {
   familyNodeTypes,
   type FamilyJunctionNodeData,
   type FamilyTreeNodeData,
+  FamilyTreeNodeContext,
 } from "@/components/FamilyFlowNodes";
+import { parseMediaAssetReference } from "@/models/MediaAsset";
 import type { PersonRecord } from "@/models/Person";
 import {
-  computeGenerationMap,
+  computeDiagramGenerationMap,
   getLifeSpanLabel,
   getPersonDisplayName,
   matchesPersonQuery,
@@ -26,6 +32,7 @@ import {
 
 interface TreeDiagramViewProps {
   people: PersonRecord[];
+  photoUrls?: ReadonlyMap<string, string>;
   query: string;
   selectedPersonId: string | null;
   onSelectPerson: (personId: string) => void;
@@ -33,6 +40,12 @@ interface TreeDiagramViewProps {
 
 interface PersonCluster {
   members: PersonRecord[];
+}
+
+interface DiagramPersonPosition {
+  id: string;
+  x: number;
+  y: number;
 }
 
 interface PartnerUnion {
@@ -68,12 +81,58 @@ const COMPACT_LAYOUT: DiagramLayout = {
   nodeWidth: 86,
 };
 
+const MIN_ZOOM = 0.24;
+const COMPACT_BREAKPOINT = "(max-width: 639px)";
+const WIDE_PADDING = { bottom: "72px", left: "36px", right: "36px", top: "28px" } as const;
+const COMPACT_PADDING = { bottom: "68px", left: "8px", right: "8px", top: "8px" } as const;
+const EMPTY_IDS: ReadonlySet<string> = new Set();
+const DEFAULT_EDGE_OPTIONS = { type: "smoothstep" };
+const PRO_OPTIONS = { hideAttribution: true };
+const ARIA_LABELS = {
+  "controls.ariaLabel": "Controlli del diagramma",
+  "controls.fitView.ariaLabel": "Adatta tutto il diagramma",
+  "controls.zoomIn.ariaLabel": "Ingrandisci il diagramma",
+  "controls.zoomOut.ariaLabel": "Riduci il diagramma",
+  "minimap.ariaLabel": "Minimappa del diagramma genealogico",
+};
+
+function subscribeToCompactLayout(onChange: () => void) {
+  const mediaQuery = window.matchMedia(COMPACT_BREAKPOINT);
+  mediaQuery.addEventListener("change", onChange);
+  return () => mediaQuery.removeEventListener("change", onChange);
+}
+
+function isCompactScreen() {
+  return window.matchMedia(COMPACT_BREAKPOINT).matches;
+}
+
 function getLegalName(person: PersonRecord): string {
   return [person.name, person.surname].filter(Boolean).join(" ").trim() || "Persona senza nome";
 }
 
 function getPartnerKey(leftId: string, rightId: string): string {
-  return [leftId, rightId].sort().join("--");
+  return leftId <= rightId
+    ? JSON.stringify([leftId, rightId])
+    : JSON.stringify([rightId, leftId]);
+}
+
+function getPersonNodeId(personId: string): string {
+  // Flow interpolates the ID inside a CSS attribute selector.
+  return `person-${encodeURIComponent(JSON.stringify(personId))}`;
+}
+
+function makeHandles(width: number, height: number, junction = false): NonNullable<Node["handles"]> {
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const handles: NonNullable<Node["handles"]> = [
+    { id: "left", x: 0, y: centerY, position: Position.Left, type: "target", width: 0, height: 0 },
+    { id: "right", x: width, y: centerY, position: Position.Right, type: "source", width: 0, height: 0 },
+    { id: "bottom", x: centerX, y: height, position: Position.Bottom, type: "source", width: 0, height: 0 },
+  ];
+  if (!junction) {
+    handles.push({ id: "top", x: centerX, y: 0, position: Position.Top, type: "target", width: 0, height: 0 });
+  }
+  return handles;
 }
 
 function comparePeopleForLayout(left: PersonRecord, right: PersonRecord): number {
@@ -88,71 +147,6 @@ function comparePeopleForLayout(left: PersonRecord, right: PersonRecord): number
   );
 
   return dateComparison || getLegalName(left).localeCompare(getLegalName(right), "it");
-}
-
-/**
- * A spouse with no recorded ancestors still belongs beside their partner. The source generation
- * map is ancestry-only, so this derived map aligns couples and then carries that alignment down
- * valid parent-child relationships without changing the stored family data.
- */
-function computeDiagramGenerationMap(people: PersonRecord[]): Map<string, number> {
-  const baseGenerations = computeGenerationMap(people);
-  const diagramGenerations = new Map(baseGenerations);
-  const peopleById = new Map(people.map((person) => [person.id, person]));
-
-  for (let pass = 0; pass < Math.max(people.length, 1); pass += 1) {
-    let changed = false;
-
-    for (const person of people) {
-      for (const partnerId of person.partnerIds) {
-        if (!peopleById.has(partnerId)) {
-          continue;
-        }
-
-        const alignedGeneration = Math.max(
-          diagramGenerations.get(person.id) ?? 0,
-          diagramGenerations.get(partnerId) ?? 0,
-        );
-
-        if ((diagramGenerations.get(person.id) ?? 0) !== alignedGeneration) {
-          diagramGenerations.set(person.id, alignedGeneration);
-          changed = true;
-        }
-
-        if ((diagramGenerations.get(partnerId) ?? 0) !== alignedGeneration) {
-          diagramGenerations.set(partnerId, alignedGeneration);
-          changed = true;
-        }
-      }
-    }
-
-    for (const child of people) {
-      const childBaseGeneration = baseGenerations.get(child.id) ?? 0;
-      const validParentGenerations = child.parentIds
-        .filter(
-          (parentId) =>
-            peopleById.has(parentId) &&
-            childBaseGeneration > (baseGenerations.get(parentId) ?? 0),
-        )
-        .map((parentId) => diagramGenerations.get(parentId) ?? 0);
-
-      if (validParentGenerations.length === 0) {
-        continue;
-      }
-
-      const requiredGeneration = Math.max(...validParentGenerations) + 1;
-      if ((diagramGenerations.get(child.id) ?? 0) < requiredGeneration) {
-        diagramGenerations.set(child.id, requiredGeneration);
-        changed = true;
-      }
-    }
-
-    if (!changed) {
-      break;
-    }
-  }
-
-  return diagramGenerations;
 }
 
 function buildGenerationClusters(bucket: PersonRecord[]): PersonCluster[] {
@@ -234,13 +228,7 @@ function buildPersonAriaLabel(person: PersonRecord): string {
   return `${details.join(", ")}. Apri la scheda personale`;
 }
 
-function buildTreeNodes(
-  people: PersonRecord[],
-  query: string,
-  selectedPersonId: string | null,
-  onSelectPerson: (personId: string) => void,
-  layout: DiagramLayout,
-) {
+function buildTreeNodes(people: PersonRecord[], layout: DiagramLayout) {
   const generations = computeDiagramGenerationMap(people);
   const generationBuckets = new Map<number, PersonRecord[]>();
 
@@ -253,22 +241,22 @@ function buildTreeNodes(
 
   const rows = Array.from(generationBuckets.entries())
     .sort(([left], [right]) => left - right)
-    .map(([generation, bucket]) => ({
-      generation,
-      clusters: buildGenerationClusters(bucket),
-    }));
-  const graphWidth = Math.max(
-    ...rows.map((row) => getRowWidth(row.clusters, layout)),
-    layout.nodeWidth,
-  );
+    .map(([, bucket]) => {
+      const clusters = buildGenerationClusters(bucket);
+      return { clusters, width: getRowWidth(clusters, layout) };
+    });
+  const graphWidth = rows.reduce((width, row) => Math.max(width, row.width), layout.nodeWidth);
   const nodes: Node[] = [];
-  const positionById = new Map<string, { x: number; y: number }>();
+  const positionById = new Map<string, DiagramPersonPosition>();
+  const unionsByPersonId = new Map<string, PartnerUnion>();
   const unionsByPartnerKey = new Map<string, PartnerUnion>();
-  const hasQuery = query.trim().length > 0;
+  const measured = { width: layout.nodeWidth, height: layout.nodeHeight };
+  const handles = makeHandles(layout.nodeWidth, layout.nodeHeight);
+  const junctionSize = { width: 2, height: 2 };
+  const junctionHandles = makeHandles(2, 2, true);
 
   rows.forEach((row, rowIndex) => {
-    const rowWidth = getRowWidth(row.clusters, layout);
-    let cursorX = (graphWidth - rowWidth) / 2;
+    let cursorX = (graphWidth - row.width) / 2;
     const y = rowIndex * layout.generationGap;
 
     row.clusters.forEach((cluster) => {
@@ -276,31 +264,32 @@ function buildTreeNodes(
         const x =
           cursorX +
           memberIndex * (layout.nodeWidth + layout.coupleGap);
-        const isHighlighted = hasQuery && matchesPersonQuery(person, query);
         const legalName = getLegalName(person);
+        const lifeSpan = getLifeSpanLabel(person);
+        const ariaLabel = buildPersonAriaLabel(person);
 
-        positionById.set(person.id, { x, y });
+        const nodeId = getPersonNodeId(person.id);
+        positionById.set(person.id, { id: nodeId, x, y });
         nodes.push({
-          id: person.id,
+          id: nodeId,
           type: "familyTree",
           position: { x, y },
-          width: layout.nodeWidth,
-          height: layout.nodeHeight,
+          ...measured,
+          measured,
+          handles,
           data: {
-            ariaLabel: buildPersonAriaLabel(person),
+            ariaLabel,
             birthPlace: person.birthPlace,
             compact: layout.compact,
             displayLabel: legalName,
-            highlighted: isHighlighted,
             label: getPersonDisplayName(person),
-            onSelect: () => onSelectPerson(person.id),
-            photo: person.photo,
+            personId: person.id,
+            photo: parseMediaAssetReference(person.photo) ? null : person.photo,
             profession: person.profession,
-            secondaryLabel: getLifeSpanLabel(person).replace(" - ", "–"),
-            selected: selectedPersonId === person.id,
+            secondaryLabel: lifeSpan.replace(" - ", "–"),
             sex: person.sex,
           } satisfies FamilyTreeNodeData,
-          ariaLabel: buildPersonAriaLabel(person),
+          ariaLabel,
           draggable: false,
           focusable: false,
           selectable: false,
@@ -310,22 +299,26 @@ function buildTreeNodes(
       if (cluster.members.length === 2) {
         const [leftPerson, rightPerson] = cluster.members;
         const partnerKey = getPartnerKey(leftPerson.id, rightPerson.id);
-        const junctionId = `family-union-${partnerKey}`;
+        const junctionId = `family-union-${encodeURIComponent(partnerKey)}`;
         const junctionX =
           cursorX + layout.nodeWidth + layout.coupleGap / 2;
         const junctionY = y + layout.nodeHeight / 2;
 
-        unionsByPartnerKey.set(partnerKey, {
+        const union = {
           id: junctionId,
           leftId: leftPerson.id,
           rightId: rightPerson.id,
-        });
+        };
+        unionsByPartnerKey.set(partnerKey, union);
+        unionsByPersonId.set(leftPerson.id, union);
+        unionsByPersonId.set(rightPerson.id, union);
         nodes.push({
           id: junctionId,
           type: "familyJunction",
           position: { x: junctionX, y: junctionY },
-          width: 2,
-          height: 2,
+          ...junctionSize,
+          measured: junctionSize,
+          handles: junctionHandles,
           data: {} satisfies FamilyJunctionNodeData,
           draggable: false,
           focusable: false,
@@ -339,17 +332,25 @@ function buildTreeNodes(
   });
 
   return {
+    bounds: {
+      x: 0,
+      y: 0,
+      width: graphWidth,
+      height: (rows.length - 1) * layout.generationGap + layout.nodeHeight,
+    },
     generations,
     nodes,
     positionById,
     unionsByPartnerKey,
+    unionsByPersonId,
   };
 }
 
 function buildTreeEdges(
   people: PersonRecord[],
-  positionById: Map<string, { x: number; y: number }>,
+  positionById: Map<string, DiagramPersonPosition>,
   unionsByPartnerKey: Map<string, PartnerUnion>,
+  unionsByPersonId: Map<string, PartnerUnion>,
 ): Edge[] {
   const peopleById = new Map(people.map((person) => [person.id, person]));
   const partnerEdgeIds = new Set<string>();
@@ -385,17 +386,21 @@ function buildTreeEdges(
         continue;
       }
 
-      const [leftId, rightId] =
-        sourcePosition.x <= targetPosition.x ? [person.id, partnerId] : [partnerId, person.id];
+      const leftFirst = sourcePosition.x <= targetPosition.x;
+      const [leftId, rightId] = leftFirst ? [person.id, partnerId] : [partnerId, person.id];
+      const [leftNode, rightNode] = leftFirst
+        ? [sourcePosition.id, targetPosition.id]
+        : [targetPosition.id, sourcePosition.id];
       const union = unionsByPartnerKey.get(partnerKey);
       const leftName = getLegalName(peopleById.get(leftId) as PersonRecord);
       const rightName = getLegalName(peopleById.get(rightId) as PersonRecord);
+      const edgeId = `partner-${encodeURIComponent(partnerKey)}`;
 
       if (union) {
         edges.push(
           {
-            id: `partner-${partnerKey}-left`,
-            source: leftId,
+            id: `${edgeId}-left`,
+            source: leftNode,
             target: union.id,
             sourceHandle: "right",
             targetHandle: "left",
@@ -405,9 +410,9 @@ function buildTreeEdges(
             focusable: false,
           },
           {
-            id: `partner-${partnerKey}-right`,
+            id: `${edgeId}-right`,
             source: union.id,
-            target: rightId,
+            target: rightNode,
             sourceHandle: "right",
             targetHandle: "left",
             type: "straight",
@@ -418,9 +423,9 @@ function buildTreeEdges(
         );
       } else {
         edges.push({
-          id: `partner-${partnerKey}`,
-          source: leftId,
-          target: rightId,
+          id: edgeId,
+          source: leftNode,
+          target: rightNode,
           sourceHandle: "right",
           targetHandle: "left",
           type: sourcePosition.y === targetPosition.y ? "straight" : "smoothstep",
@@ -435,17 +440,13 @@ function buildTreeEdges(
   for (const child of people) {
     const validParentIds = child.parentIds.filter((parentId) => peopleById.has(parentId));
     let representedParentIds = new Set<string>();
+    const parentIds = new Set(validParentIds);
     let familyUnion: PartnerUnion | undefined;
-
-    for (let leftIndex = 0; leftIndex < validParentIds.length && !familyUnion; leftIndex += 1) {
-      for (
-        let rightIndex = leftIndex + 1;
-        rightIndex < validParentIds.length && !familyUnion;
-        rightIndex += 1
-      ) {
-        familyUnion = unionsByPartnerKey.get(
-          getPartnerKey(validParentIds[leftIndex], validParentIds[rightIndex]),
-        );
+    for (const parentId of validParentIds) {
+      const union = unionsByPersonId.get(parentId);
+      if (union && parentIds.has(union.leftId) && parentIds.has(union.rightId)) {
+        familyUnion = union;
+        break;
       }
     }
 
@@ -457,9 +458,9 @@ function buildTreeEdges(
 
       representedParentIds = new Set([familyUnion.leftId, familyUnion.rightId]);
       edges.push({
-        id: `parent-union-${familyUnion.id}-${child.id}`,
+        id: `parent-union-${encodeURIComponent(JSON.stringify([familyUnion.id, child.id]))}`,
         source: familyUnion.id,
-        target: child.id,
+        target: positionById.get(child.id)!.id,
         sourceHandle: "bottom",
         targetHandle: "top",
         type: "smoothstep",
@@ -480,9 +481,9 @@ function buildTreeEdges(
       }
 
       edges.push({
-        id: `parent-${parentId}-${child.id}`,
-        source: parentId,
-        target: child.id,
+        id: `parent-${encodeURIComponent(JSON.stringify([parentId, child.id]))}`,
+        source: positionById.get(parentId)!.id,
+        target: positionById.get(child.id)!.id,
         sourceHandle: "bottom",
         targetHandle: "top",
         type: "smoothstep",
@@ -498,57 +499,113 @@ function buildTreeEdges(
 
 export function TreeDiagramView({
   people,
+  photoUrls,
   query,
   selectedPersonId,
   onSelectPerson,
 }: TreeDiagramViewProps) {
-  const [isCompactLayout, setIsCompactLayout] = useState(false);
+  const isCompactLayout = useSyncExternalStore(subscribeToCompactLayout, isCompactScreen, () => false);
   const layout = isCompactLayout ? COMPACT_LAYOUT : WIDE_LAYOUT;
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const [flowInstance, setFlowInstance] = useState<ReactFlowInstance | null>(null);
 
-  useEffect(() => {
-    const mediaQuery = window.matchMedia("(max-width: 639px)");
-    const syncLayout = () => setIsCompactLayout(mediaQuery.matches);
-
-    syncLayout();
-    mediaQuery.addEventListener("change", syncLayout);
-
-    return () => mediaQuery.removeEventListener("change", syncLayout);
-  }, []);
-
-  const { edges, nodes, totalGenerations } = useMemo(() => {
+  const { bounds, edges, nodes, positionById, totalGenerations } = useMemo(() => {
     const {
+      bounds,
       generations,
-      nodes: nextNodes,
+      nodes,
       positionById,
       unionsByPartnerKey,
-    } = buildTreeNodes(
-      people,
-      query,
-      selectedPersonId,
-      onSelectPerson,
-      layout,
-    );
+      unionsByPersonId,
+    } = buildTreeNodes(people, layout);
 
     return {
-      nodes: nextNodes,
-      edges: buildTreeEdges(people, positionById, unionsByPartnerKey),
+      bounds,
+      nodes,
+      positionById,
+      edges: buildTreeEdges(people, positionById, unionsByPartnerKey, unionsByPersonId),
       totalGenerations: new Set(generations.values()).size,
     };
-  }, [layout, onSelectPerson, people, query, selectedPersonId]);
+  }, [layout, people]);
 
-  const fitViewPadding = isCompactLayout
-    ? {
-        bottom: "68px" as const,
-        left: "8px" as const,
-        right: "8px" as const,
-        top: "8px" as const,
+  const normalizedQuery = query.trim().toLowerCase();
+  const highlightedIds = useMemo(
+    () => normalizedQuery
+      ? new Set(people.filter((person) => matchesPersonQuery(person, normalizedQuery)).map(({ id }) => id))
+      : EMPTY_IDS,
+    [normalizedQuery, people],
+  );
+  const interaction = useMemo(
+    () => ({ highlightedIds, onSelectPerson, photoUrls, selectedPersonId }),
+    [highlightedIds, onSelectPerson, photoUrls, selectedPersonId],
+  );
+  const handleSelectNode = useCallback((_: unknown, node: Node) => {
+    if (node.type === "familyTree") {
+      onSelectPerson((node.data as FamilyTreeNodeData).personId);
+    }
+  }, [onSelectPerson]);
+
+  const fitViewPadding = isCompactLayout ? COMPACT_PADDING : WIDE_PADDING;
+  const fitDiagram = useCallback((flow: ReactFlowInstance) => {
+    const canvas = canvasRef.current;
+    const firstNode = nodes[0];
+    if (!canvas || !firstNode) {
+      return;
+    }
+
+    const { clientWidth, clientHeight } = canvas;
+    const viewport = getViewportForBounds(
+      bounds, clientWidth, clientHeight, MIN_ZOOM, 1.05, fitViewPadding,
+    );
+    if (viewport.zoom === MIN_ZOOM) {
+      // The full archive cannot fit at a readable zoom. Start on an actual card.
+      void flow.setCenter(
+        firstNode.position.x + layout.nodeWidth / 2,
+        firstNode.position.y + layout.nodeHeight / 2,
+        { zoom: MIN_ZOOM },
+      );
+    } else {
+      void flow.setViewport(viewport);
+    }
+  }, [bounds, fitViewPadding, layout, nodes]);
+
+  const handleInit = useCallback((flow: ReactFlowInstance) => {
+    setFlowInstance(flow);
+    fitDiagram(flow);
+  }, [fitDiagram]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!flowInstance || !canvas || highlightedIds.size === 0) {
+      return;
+    }
+
+    const { x, y, zoom } = flowInstance.getViewport();
+    let firstMatch: DiagramPersonPosition | undefined;
+    for (const id of highlightedIds) {
+      const position = positionById.get(id);
+      if (!position) {
+        continue;
       }
-    : {
-        bottom: "72px" as const,
-        left: "36px" as const,
-        right: "36px" as const,
-        top: "28px" as const,
-      };
+      firstMatch ??= position;
+      const left = position.x * zoom + x;
+      const top = position.y * zoom + y;
+      if (
+        left + layout.nodeWidth * zoom > 0 && left < canvas.clientWidth &&
+        top + layout.nodeHeight * zoom > 0 && top < canvas.clientHeight
+      ) {
+        return;
+      }
+    }
+
+    if (firstMatch) {
+      void flowInstance.setCenter(
+        firstMatch.x + layout.nodeWidth / 2,
+        firstMatch.y + layout.nodeHeight / 2,
+        { zoom: Math.max(zoom, 0.6) },
+      );
+    }
+  }, [flowInstance, highlightedIds, layout, positionById]);
 
   return (
     <section
@@ -578,74 +635,67 @@ export function TreeDiagramView({
         </p>
       </div>
 
-      <div className="relative min-h-0 flex-1 overflow-hidden bg-[#fbfaf7]">
-        <ReactFlow
-          key={isCompactLayout ? "compact" : "wide"}
-          aria-label="Albero genealogico. Usa i controlli per adattare, ingrandire o ridurre la vista."
-          ariaLabelConfig={{
-            "controls.ariaLabel": "Controlli del diagramma",
-            "controls.fitView.ariaLabel": "Adatta tutto il diagramma",
-            "controls.zoomIn.ariaLabel": "Ingrandisci il diagramma",
-            "controls.zoomOut.ariaLabel": "Riduci il diagramma",
-            "minimap.ariaLabel": "Minimappa del diagramma genealogico",
-          }}
-          colorMode="light"
-          defaultEdgeOptions={{ type: "smoothstep" }}
-          edges={edges}
-          edgesFocusable={false}
-          elementsSelectable={false}
-          fitView
-          fitViewOptions={{
-            duration: 0,
-            maxZoom: 1.05,
-            minZoom: 0.28,
-            padding: fitViewPadding,
-          }}
-          maxZoom={1.45}
-          minZoom={0.24}
-          nodeTypes={familyNodeTypes}
-          nodes={nodes}
-          nodesConnectable={false}
-          nodesDraggable={false}
-          nodesFocusable={false}
-          onNodeClick={(_, node) => {
-            if (node.type === "familyTree") {
-              onSelectPerson(node.id);
-            }
-          }}
-          panOnDrag
-          proOptions={{ hideAttribution: true }}
-          zoomOnDoubleClick={false}
-        >
-          <Background color="#d7ded7" gap={28} size={1} />
-          <MiniMap
-            ariaLabel="Minimappa del diagramma genealogico"
-            className="!right-3 !bottom-3 !m-0 !h-20 !w-28 !rounded-xl !border !border-[#ccd5cc] !bg-white/95 !shadow-[0_8px_24px_rgba(20,53,36,0.1)] sm:!h-28 sm:!w-44"
-            maskColor="rgba(23, 69, 45, 0.09)"
-            nodeBorderRadius={8}
-            nodeColor={(node) => (node.type === "familyJunction" ? "transparent" : "#7fa08a")}
-            nodeStrokeColor={(node) =>
-              node.type === "familyJunction" ? "transparent" : "#17452d"
-            }
-            nodeStrokeWidth={1.5}
-            pannable
-            position="bottom-right"
-            zoomable
-          />
-          <Controls
-            aria-label="Controlli del diagramma"
-            className="!m-3 !overflow-hidden !rounded-xl !border !border-[#ccd5cc] !bg-white !shadow-[0_8px_24px_rgba(20,53,36,0.12)] [&>button]:!h-11 [&>button]:!w-11 [&>button]:!border-[#dce2dc] [&>button]:!bg-white [&>button]:!text-[#173c28] [&>button:hover]:!bg-[#f0f5ef] [&>button:focus-visible]:!relative [&>button:focus-visible]:!z-10 [&>button:focus-visible]:!outline-2 [&>button:focus-visible]:!outline-offset-[-3px] [&>button:focus-visible]:!outline-[#17452d]"
-            fitViewOptions={{
-              duration: 0,
-              maxZoom: 1.05,
-              minZoom: 0.24,
-              padding: fitViewPadding,
-            }}
-            orientation="vertical"
-            position="bottom-left"
-            showInteractive={false}
-          />
-        </ReactFlow>
+      <div className="relative min-h-0 flex-1 overflow-hidden bg-[#fbfaf7]" ref={canvasRef}>
+        <FamilyTreeNodeContext.Provider value={interaction}>
+          <ReactFlow
+            key={isCompactLayout ? "compact" : "wide"}
+            aria-label="Albero genealogico. Usa i controlli per adattare, ingrandire o ridurre la vista."
+            ariaLabelConfig={ARIA_LABELS}
+            colorMode="light"
+            defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
+            edges={edges}
+            edgesFocusable={false}
+            elementsSelectable={false}
+            maxZoom={1.45}
+            minZoom={MIN_ZOOM}
+            nodeTypes={familyNodeTypes}
+            nodes={nodes}
+            nodesConnectable={false}
+            nodesDraggable={false}
+            nodesFocusable={false}
+            onInit={handleInit}
+            onNodeClick={handleSelectNode}
+            onlyRenderVisibleElements
+            panOnDrag
+            proOptions={PRO_OPTIONS}
+            zoomOnDoubleClick={false}
+          >
+            <Background color="#d7ded7" gap={28} size={1} />
+            <MiniMap
+              ariaLabel="Minimappa del diagramma genealogico"
+              className="!right-3 !bottom-3 !m-0 !h-20 !w-28 !rounded-xl !border !border-[#ccd5cc] !bg-white/95 !shadow-[0_8px_24px_rgba(20,53,36,0.1)] sm:!h-28 sm:!w-44"
+              maskColor="rgba(23, 69, 45, 0.09)"
+              nodeBorderRadius={8}
+              nodeColor={(node) => (node.type === "familyJunction" ? "transparent" : "#7fa08a")}
+              nodeStrokeColor={(node) =>
+                node.type === "familyJunction" ? "transparent" : "#17452d"
+              }
+              nodeStrokeWidth={1.5}
+              pannable
+              position="bottom-right"
+              zoomable
+            />
+            <Controls
+              aria-label="Controlli del diagramma"
+              className="!m-3 !overflow-hidden !rounded-xl !border !border-[#ccd5cc] !bg-white !shadow-[0_8px_24px_rgba(20,53,36,0.12)] [&>button]:!h-11 [&>button]:!w-11 [&>button]:!border-[#dce2dc] [&>button]:!bg-white [&>button]:!text-[#173c28] [&>button:hover]:!bg-[#f0f5ef] [&>button:focus-visible]:!relative [&>button:focus-visible]:!z-10 [&>button:focus-visible]:!outline-2 [&>button:focus-visible]:!outline-offset-[-3px] [&>button:focus-visible]:!outline-[#17452d]"
+              orientation="vertical"
+              position="bottom-left"
+            showFitView={false}
+              showInteractive={false}
+          >
+            <ControlButton
+              aria-label={ARIA_LABELS["controls.fitView.ariaLabel"]}
+              className="react-flow__controls-fitview"
+              onClick={() => flowInstance && fitDiagram(flowInstance)}
+              title={ARIA_LABELS["controls.fitView.ariaLabel"]}
+            >
+              <svg aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 20 20">
+                <path d="M2 7V2h5m6 0h5v5m0 6v5h-5m-6 0H2v-5" />
+              </svg>
+            </ControlButton>
+          </Controls>
+          </ReactFlow>
+        </FamilyTreeNodeContext.Provider>
 
         {people.length === 0 ? (
           <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center px-6 text-center">

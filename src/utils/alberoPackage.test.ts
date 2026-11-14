@@ -1,9 +1,11 @@
 import { Blob as NodeBlob } from "node:buffer";
+import { createHash } from "node:crypto";
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { seedFamilyTree } from "@/data/seedFamilyTree";
 import {
+  DEFAULT_MAX_MEDIA_ASSET_BYTES,
   MEDIA_ASSET_REFERENCE_PREFIX,
   createMediaAssetRecord,
   createMediaAssetReference,
@@ -214,6 +216,28 @@ describe(".albero package", () => {
     ]);
   });
 
+  it.each([8 * 1024 * 1024, DEFAULT_MAX_MEDIA_ASSET_BYTES - 1])(
+    "round-trips a %s-byte asset across Base64 chunks",
+    async (size) => {
+      const snapshot = createClosedSnapshot();
+      const [photo, attachment] = createClosedAssets();
+      const bytes = new Uint8Array(size);
+      for (let offset = 0; offset < size; offset += 1) {
+        bytes[offset] = offset % 251;
+      }
+      const assets = [
+        photo,
+        { ...attachment, size, blob: new Blob([bytes], { type: attachment.mimeType }) },
+      ];
+      const imported = await importAlberoPackage(await exportAlberoPackage(snapshot, assets));
+
+      expect(imported.snapshot).toEqual(snapshot);
+      expect(imported.assets.map(withoutBlob)).toEqual(assets.map(withoutBlob));
+      expect(createHash("sha256").update(await readBlob(imported.assets[1].blob)).digest("hex"))
+        .toEqual(createHash("sha256").update(bytes).digest("hex"));
+    },
+  );
+
   it("rejects missing and malformed media references on export and import", async () => {
     const snapshot = createClosedSnapshot();
     const [, attachment] = createClosedAssets();
@@ -402,6 +426,13 @@ describe(".albero package", () => {
     ).rejects.toMatchObject({ code: "PACKAGE_TOO_LARGE" });
     await expect(
       importAlberoPackage(validArchive, { maxUncompressedBytes: 32 }),
+    ).rejects.toMatchObject({ code: "PACKAGE_TOO_LARGE" });
+    const snapshot = snapshotWithoutMediaReferences();
+    await expect(
+      exportAlberoPackage(snapshot, [], { maxUncompressedBytes: 32 }),
+    ).rejects.toMatchObject({ code: "PACKAGE_TOO_LARGE" });
+    await expect(
+      exportAlberoPackage(snapshot, [], { maxCompressedBytes: 1 }),
     ).rejects.toMatchObject({ code: "PACKAGE_TOO_LARGE" });
   });
 });

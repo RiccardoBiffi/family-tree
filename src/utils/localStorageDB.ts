@@ -76,7 +76,7 @@ export class LocalStorageDB {
     return this.loadWithStatus().snapshot;
   }
 
-  loadWithStatus(): FamilyTreeLoadResult {
+  loadWithStatus({ repair = true } = {}): FamilyTreeLoadResult {
     const storage = this.getStorage();
     let storedValue: string | null;
 
@@ -111,7 +111,9 @@ export class LocalStorageDB {
       };
     } catch {
       const seeded = normalizeFamilyTree(seedFamilyTree);
-      this.save(seeded);
+      if (repair) {
+        this.save(seeded);
+      }
       return {
         snapshot: seeded,
         status: "demo-fallback",

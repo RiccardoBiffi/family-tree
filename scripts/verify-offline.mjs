@@ -20,7 +20,10 @@ function assert(condition, message) {
 
 await inspectOfflineArtifact();
 
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({
+  headless: true,
+  channel: process.env.PLAYWRIGHT_CHROMIUM_CHANNEL,
+});
 const artifactUrl = pathToFileURL(offlineArtifactPath).href;
 
 try {

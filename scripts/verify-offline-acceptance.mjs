@@ -533,8 +533,266 @@ async function runVolatileRecoveryFlow(browser, archiveBytes) {
   );
 }
 
+async function runAtomicArchiveFlow(browser) {
+  const context = await browser.newContext({
+    offline: true,
+    viewport: { height: 900, width: 1440 },
+    timezoneId: "America/Los_Angeles",
+  });
+  const url = artifactUrl + "?admin";
+  const page = await context.newPage();
+  const assertCleanRuntime = observeRuntime(page, "atomic archive");
+  const stamp = "2026-01-01T00:00:00.000Z";
+  const snapshot = {
+    version: 1,
+    metadata: {
+      title: "Archivio Migrazione",
+      description: "",
+      familyName: "Migrazione",
+      updatedAt: stamp,
+    },
+    people: [{
+      id: "ada",
+      name: "Ada",
+      birthDate: "2000-01-01",
+      photo: "media:prima",
+      createdAt: stamp,
+      updatedAt: stamp,
+      parentIds: [],
+      childIds: [],
+      partnerIds: [],
+    }],
+  };
+
+  // Prepare the old app's two storage backends before the new app boots.
+  try {
+    await page.addInitScript(({ snapshot, stamp, bytes }) => {
+      if (localStorage.getItem("family-tree.snapshot.v1") !== null) {
+        return;
+      }
+      localStorage.setItem("family-tree.snapshot.v1", JSON.stringify(snapshot));
+      const request = indexedDB.open("family-tree.media.v1", 1);
+      request.onupgradeneeded = () => {
+        const store = request.result.createObjectStore("assets", { keyPath: "id" });
+        const blob = new Blob([new Uint8Array(bytes)], { type: "image/png" });
+        store.put({
+          id: "prima",
+          version: 1,
+          personId: "ada",
+          role: "photo",
+          name: "prima.png",
+          mimeType: blob.type,
+          size: blob.size,
+          createdAt: stamp,
+          updatedAt: stamp,
+          blob,
+        });
+      };
+      request.onsuccess = () => request.result.close();
+    }, { snapshot, stamp, bytes: Array.from(pngBytes) });
+    await page.goto(url);
+    await page.getByRole("heading", { name: "Archivio Migrazione" }).waitFor();
+
+    const secondPage = await context.newPage();
+    await secondPage.goto(url);
+    await secondPage.getByRole("heading", { name: "Archivio Migrazione" }).waitFor();
+
+    const openAda = async (target) => {
+      await target.getByRole("tab", { name: "Tabella", exact: true }).click();
+      await target.getByRole("button", { name: "Ada", exact: true }).click();
+      return target.getByRole("dialog", { name: "Ada", exact: true });
+    };
+    const firstDetails = await openAda(page);
+    await firstDetails.getByRole("img", { name: "Ada" }).waitFor();
+    await firstDetails.getByText("01 gen 2000", { exact: true }).waitFor();
+    await firstDetails.getByRole("button", { name: "Modifica" }).click();
+    const firstEditor = page.getByRole("dialog");
+    await firstEditor.getByLabel("Professione").fill("Archivista");
+    await page.evaluate(() => {
+      const record = { mediaWrites: 0, commits: 0 };
+      Object.assign(window, { atomicAcceptance: record });
+      for (const method of ["add", "put", "delete", "clear"]) {
+        const original = IDBObjectStore.prototype[method];
+        IDBObjectStore.prototype[method] = function (...args) {
+          if (this.name === "assets") {
+            record.mediaWrites += 1;
+          }
+          if (this.name === "archive" && method === "put") {
+            record.commits += 1;
+          }
+          return original.apply(this, args);
+        };
+      }
+    });
+    const submit = firstEditor.getByRole("button", { name: "Salva modifiche" });
+    await submit.evaluate((button) => { button.click(); button.click(); });
+    await firstDetails.getByText("Archivista", { exact: true }).waitFor();
+    const writes = await page.evaluate(() => window.atomicAcceptance);
+    assert(writes.mediaWrites === 0, "Text-only edit unexpectedly wrote to the assets store.");
+    assert(writes.commits === 1, "Double submit wrote a second archive revision.");
+    assert(
+      (await page.evaluate(() => localStorage.getItem("family-tree.snapshot.v1"))) === JSON.stringify(snapshot),
+      "Legacy source was modified after migration.",
+    );
+    const secondDetails = await openAda(secondPage);
+    await secondDetails.getByRole("button", { name: "Modifica" }).click();
+    const staleEditor = secondPage.getByRole("dialog");
+    await staleEditor.getByLabel("Professione").fill("Versione obsoleta");
+    const conflict = secondPage.waitForEvent("dialog").then(async (dialog) => {
+      const message = dialog.message();
+      await dialog.dismiss();
+      return message;
+    });
+    await staleEditor.getByRole("button", { name: "Salva modifiche" }).click();
+    assert((await conflict).includes("in un’altra scheda"), "Stale edit did not report a revision conflict.");
+    await staleEditor.waitFor();
+    await secondPage.reload();
+    await (await openAda(secondPage)).getByText("Archivista", { exact: true }).waitFor();
+    await secondPage.close();
+
+    await firstDetails.getByRole("button", { name: "Modifica" }).click();
+    const photoEditor = page.getByRole("dialog");
+    await photoEditor.getByLabel("Seleziona foto").setInputFiles({
+      buffer: pngBytes,
+      mimeType: "image/png",
+      name: "dopo.png",
+    });
+    await page.evaluate(() => {
+      const original = IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put = function (...args) {
+        if (this.name === "archive") {
+          throw new DOMException("Synthetic acceptance quota", "QuotaExceededError");
+        }
+        return original.apply(this, args);
+      };
+    });
+    await photoEditor.getByRole("button", { name: "Salva modifiche" }).click();
+    await page.getByText("Archiviazione temporanea", { exact: true }).waitFor();
+    await page.reload();
+    await (await openAda(page)).getByRole("img", { name: "Ada" }).waitFor();
+    const assets = await getMediaManifest(page);
+    assert(
+      assets.length === 1 && assets[0].name === "prima.png",
+      "Failed atomic update did not preserve the prior durable portrait.",
+    );
+
+    await page.getByRole("button", { name: "Modifica" }).click();
+    const abortedEditor = page.getByRole("dialog");
+    await abortedEditor.getByLabel("Seleziona foto").setInputFiles({
+      buffer: pngBytes,
+      mimeType: "image/png",
+      name: "abortita.png",
+    });
+    await page.evaluate(() => {
+      const put = IDBObjectStore.prototype.put;
+      IDBObjectStore.prototype.put = function (...args) {
+        const request = put.apply(this, args);
+        if (this.name === "assets" && args[0]?.name === "abortita.png") {
+          request.addEventListener("success", () => this.transaction.abort(), { once: true });
+        }
+        return request;
+      };
+    });
+    const aborted = page.waitForEvent("dialog").then(async (dialog) => {
+      const message = dialog.message();
+      await dialog.dismiss();
+      return message;
+    });
+    await abortedEditor.getByRole("button", { name: "Salva modifiche" }).click();
+    assert((await aborted).includes("Nessuna modifica"), "Aborted write did not report failure.");
+    await abortedEditor.waitFor();
+    await page.reload();
+    await (await openAda(page)).getByRole("img", { name: "Ada" }).waitFor();
+    const afterAbort = await getMediaManifest(page);
+    assert(
+      JSON.stringify(afterAbort) === JSON.stringify(assets),
+      "An aborted transaction changed the durable media.",
+    );
+    assertCleanRuntime();
+  } finally {
+    await context.close();
+  }
+  console.log("atomic acceptance: migration, date-only formatting, duplicate submit, text-only edit, stale revision, quota and abort.");
+}
+
+async function runLargeArchiveFlow(browser) {
+  const context = await browser.newContext({
+    offline: true,
+    viewport: { height: 844, width: 390 },
+  });
+  const page = await context.newPage();
+  const assertCleanRuntime = observeRuntime(page, "deep archive");
+  await page.addInitScript(() => {
+    const count = 10_000;
+    const timestamp = "2026-01-01T00:00:00.000Z";
+    const people = Array.from({ length: count }, (_, index) => ({
+      id: String(index),
+      name: "Persona " + String(index).padStart(5, "0"),
+      parentIds: index < count - 1 ? [String(index + 1)] : [],
+      childIds: index > 0 ? [String(index - 1)] : [],
+      partnerIds: [],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }));
+    localStorage.setItem("family-tree.snapshot.v1", JSON.stringify({
+      version: 1,
+      metadata: {
+        title: "Archivio Profondo",
+        description: "",
+        familyName: "Profondo",
+        updatedAt: timestamp,
+      },
+      people,
+    }));
+  });
+
+  try {
+    await page.goto(artifactUrl);
+    await page.getByRole("heading", { name: "Archivio Profondo" }).waitFor();
+    await page.locator(".react-flow__node").first().waitFor({ state: "attached" });
+    assert(
+      (await page.locator(".react-flow__node").count()) < 500,
+      "The diagram mounted hundreds of nodes outside the mobile viewport.",
+    );
+    await page.getByRole("button", { name: "Adatta tutto il diagramma" }).click();
+    await page.locator(".react-flow__node").first().waitFor({ state: "attached" });
+    await page.getByLabel("Cerca una persona").fill("Persona 00000");
+    await page.getByRole("button", { name: /Persona 00000/ }).click();
+    await page.getByRole("dialog", { name: "Persona 00000" }).waitFor();
+    await page.keyboard.press("Escape");
+    await page.getByLabel("Cerca una persona").fill("");
+    await page.getByRole("tab", { name: "Tabella", exact: true }).click();
+    await page.getByRole("button", { name: "Persona 00000", exact: true }).focus();
+    await page.keyboard.press("End");
+    const last = page.getByRole("button", { name: "Persona 09999", exact: true });
+    await last.waitFor();
+    assert(await last.evaluate((button) => button === document.activeElement), "End did not focus the last table row.");
+    await page.keyboard.press("Enter");
+    await page.getByRole("dialog", { name: "Persona 09999" }).waitFor();
+    await page.keyboard.press("Escape");
+    assert((await page.locator("[data-virtual-row]").count()) < 100, "Table mounted too many rows.");
+    await page.getByRole("tab", { name: "Timeline", exact: true }).click();
+    await page.getByRole("heading", { name: "Data di nascita non disponibile" }).waitFor();
+    await page.getByRole("button", { name: "Persona 00000", exact: true }).focus();
+    await page.keyboard.press("End");
+    await last.waitFor();
+    assert(await last.evaluate((button) => button === document.activeElement), "End did not focus the last undated timeline item.");
+    assert((await page.locator("[data-virtual-row]").count()) < 100, "Timeline mounted too many rows.");
+    await page.getByLabel("Cerca una persona").fill("Persona 09999");
+    await page.getByText("1 corrispondenze evidenziate", { exact: true }).waitFor();
+    await assertNoPageOverflow(page, "deep mobile archive");
+    assertCleanRuntime();
+  } finally {
+    await context.close();
+  }
+  console.log("deep archive acceptance: 10,000 people, bounded rendering, keyboard and undated search.");
+}
+
 await inspectOfflineArtifact();
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({
+  headless: true,
+  channel: process.env.PLAYWRIGHT_CHROMIUM_CHANNEL,
+});
 
 try {
   await runDurableDesktopFlow(browser);
@@ -542,6 +800,8 @@ try {
   await runMediaFreeDemoFallbackFlow(browser);
   const volatileArchive = await runVolatileFlow(browser);
   await runVolatileRecoveryFlow(browser, volatileArchive);
+  await runAtomicArchiveFlow(browser);
+  await runLargeArchiveFlow(browser);
 } finally {
   await browser.close();
 }

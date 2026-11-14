@@ -55,6 +55,8 @@ npm run verify:offline
 
 Questo comando apre entrambe le modalità tramite `file://` in Chromium con il
 browser impostato offline, sia a 1440×900 sia a 390×844.
+Per usare Google Chrome già installato, impostare
+`PLAYWRIGHT_CHROMIUM_CHANNEL=chrome` nell’ambiente della verifica.
 
 La variante Next.js rimane disponibile separatamente:
 
@@ -72,16 +74,16 @@ npm run release
 
 ## Stato locale e “senza dati”
 
-L’app considera un avvio **senza dati** soltanto quando nel browser non esiste
-la chiave `family-tree.snapshot.v1`. In quel caso mostra la configurazione
-iniziale e salva un archivio vuoto con il nome della famiglia inserito.
-
-Un archivio già salvato con `people: []` è invece un archivio valido e
-inizializzato: al ricaricamento non viene mostrata di nuovo la configurazione.
-Gli snapshot v1 esistenti continuano a essere letti con la stessa chiave e lo
-stesso schema, perché `familyName` era già parte dei metadati. Un payload non
-decodificabile mantiene il comportamento di recupero precedente caricando i
+L’app salva lo snapshot e i media in IndexedDB. All’apertura copia lo snapshot
+legacy da `localStorage` se IndexedDB non contiene ancora un archivio, lasciando
+disponibile il valore originale di `family-tree.snapshot.v1`. L’assenza di uno
+snapshot apre la configurazione iniziale. Uno snapshot con `people: []` conta
+come archivio inizializzato. Se lo snapshot legacy è illeggibile, l’app apre i
 dati demo Rinaldi.
+
+Se il browser rifiuta la scrittura, l’ultima versione salvata rimane disponibile
+al ricaricamento. L’app segnala le modifiche conservate solo in sessione, che
+possono essere salvate esportando un file `.albero`.
 
 ## Learn More
 

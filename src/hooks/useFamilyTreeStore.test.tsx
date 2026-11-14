@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { seedFamilyTree } from "@/data/seedFamilyTree";
 import { useFamilyTreeStore } from "@/hooks/useFamilyTreeStore";
@@ -9,6 +9,9 @@ import {
   type FamilyTreeSnapshot,
 } from "@/models/FamilyTree";
 import { LocalStorageDB } from "@/utils/localStorageDB";
+import { mockArchiveDB } from "@/test/mockArchiveDB";
+import { createMediaAssetRecord } from "@/models/MediaAsset";
+import { ArchiveConflictError } from "@/utils/mediaDB";
 
 function findPerson(snapshot: FamilyTreeSnapshot, personId: string) {
   const person = snapshot.people.find((candidate) => candidate.id === personId);
@@ -17,18 +20,20 @@ function findPerson(snapshot: FamilyTreeSnapshot, personId: string) {
 }
 
 describe("useFamilyTreeStore relationship persistence", () => {
+  let database: ReturnType<typeof mockArchiveDB>;
+  beforeEach(() => { database = mockArchiveDB(); });
+  afterEach(() => { vi.restoreAllMocks(); });
+
   it("retains every editable field and replaces reciprocal relationships after reload", async () => {
     new LocalStorageDB().save(seedFamilyTree);
     const { result } = renderHook(() => useFamilyTreeStore());
 
-    await waitFor(() => expect(result.current.isLoaded).toBe(true));
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
 
     const originalSnapshot = result.current.snapshot!;
     const originalPerson = findPerson(originalSnapshot, "p3");
-    let savedSnapshot: FamilyTreeSnapshot | null = null;
-
-    act(() => {
-      savedSnapshot = result.current.upsertPerson({
+    await act(async () => {
+      expect(await result.current.upsertPerson({
         ...originalPerson,
         name: "Marco aggiornato",
         knownAs: "Arco",
@@ -48,12 +53,12 @@ describe("useFamilyTreeStore relationship persistence", () => {
         parentIds: ["p6"],
         childIds: ["p9"],
         partnerIds: ["p4"],
-      });
+      })).toBe(true);
     });
 
-    expect(savedSnapshot).not.toBeNull();
-
-    const reloaded = new LocalStorageDB().load();
+    const { result: reopened } = renderHook(() => useFamilyTreeStore());
+    await waitFor(() => expect(reopened.current.snapshot).not.toBeNull());
+    const reloaded = reopened.current.snapshot!;
     const editedPerson = findPerson(reloaded, "p3");
 
     expect(reloaded.version).toBe(FAMILY_TREE_VERSION);
@@ -95,18 +100,20 @@ describe("useFamilyTreeStore relationship persistence", () => {
       window.localStorage.getItem(FAMILY_TREE_STORAGE_KEY) ?? "null",
     ) as FamilyTreeSnapshot | null;
     expect(stored?.version).toBe(FAMILY_TREE_VERSION);
+    expect(findPerson(stored!, "p3").name).toBe(originalPerson.name);
+    expect(database.commit).toHaveBeenCalledTimes(2);
   });
 
   it("persists removing every parent, child, and partner with reciprocal edges cleared", async () => {
     new LocalStorageDB().save(seedFamilyTree);
     const { result } = renderHook(() => useFamilyTreeStore());
 
-    await waitFor(() => expect(result.current.isLoaded).toBe(true));
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
 
     const originalPerson = findPerson(result.current.snapshot!, "p8");
 
-    act(() => {
-      result.current.upsertPerson({
+    await act(async () => {
+      await result.current.upsertPerson({
         ...originalPerson,
         parentIds: [],
         childIds: [],
@@ -114,7 +121,9 @@ describe("useFamilyTreeStore relationship persistence", () => {
       });
     });
 
-    const reloaded = new LocalStorageDB().load();
+    const { result: reopened } = renderHook(() => useFamilyTreeStore());
+    await waitFor(() => expect(reopened.current.snapshot).not.toBeNull());
+    const reloaded = reopened.current.snapshot!;
     const editedPerson = findPerson(reloaded, "p8");
 
     expect(editedPerson.parentIds).toEqual([]);
@@ -134,18 +143,18 @@ describe("useFamilyTreeStore relationship persistence", () => {
       });
     const { result } = renderHook(() => useFamilyTreeStore());
 
-    await waitFor(() => expect(result.current.isLoaded).toBe(true));
-    expect(result.current.persistenceStatus).toBe("volatile");
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+    expect(result.current.isVolatile).toBe(true);
     expect(result.current.needsArchiveSetup).toBe(true);
 
-    act(() => {
-      result.current.initializeArchive("Volatile");
+    await act(async () => {
+      await result.current.initializeArchive("Volatile");
     });
     expect(result.current.snapshot?.metadata.familyName).toBe("Volatile");
 
     const person = seedFamilyTree.people[0];
-    act(() => {
-      result.current.upsertPerson({
+    await act(async () => {
+      await result.current.upsertPerson({
         ...person,
         id: "volatile-person",
         parentIds: [],
@@ -156,9 +165,57 @@ describe("useFamilyTreeStore relationship persistence", () => {
 
     expect(result.current.snapshot?.people).toHaveLength(1);
     expect(result.current.snapshot?.people[0].id).toBe("volatile-person");
-    expect(result.current.persistenceStatus).toBe("volatile");
+    expect(result.current.isVolatile).toBe(true);
 
     getItem.mockRestore();
     new LocalStorageDB().clear();
+  });
+
+  it("preserves the original archive when quota is exhausted and exports the whole session", async () => {
+    const photo = createMediaAssetRecord({
+      id: "first", personId: "p1", name: "first.png", role: "photo",
+      blob: new Blob(["first"], { type: "image/png" }),
+    });
+    database.assets.set(photo.id, photo);
+    const person = { ...seedFamilyTree.people[0], photo: "media:first" };
+    new LocalStorageDB().save({ ...seedFamilyTree, people: [person] });
+    const { result } = renderHook(() => useFamilyTreeStore());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+    const replacement = createMediaAssetRecord({
+      id: "second", personId: "p1", name: "second.png", role: "photo",
+      blob: new Blob(["second"], { type: "image/png" }),
+    });
+    database.commit.mockRejectedValueOnce(new DOMException("Quota", "QuotaExceededError"));
+    await act(async () => {
+      await result.current.upsertPerson(
+        { ...person, photo: "media:second" },
+        { put: [replacement], remove: [photo.id] },
+      );
+    });
+    expect(result.current.isVolatile).toBe(true);
+    expect(database.snapshot?.people[0].photo).toBe("media:first");
+    expect([...database.assets.values()]).toEqual([photo]);
+    expect(await result.current.readForExport()).toMatchObject({
+      snapshot: { people: [{ photo: "media:second" }] },
+      assets: [replacement],
+    });
+  });
+
+  it("rejects stale and duplicate mutations", async () => {
+    new LocalStorageDB().save(seedFamilyTree);
+    const { result: first } = renderHook(() => useFamilyTreeStore());
+    await waitFor(() => expect(first.current.snapshot).not.toBeNull());
+    const { result: second } = renderHook(() => useFamilyTreeStore());
+    await waitFor(() => expect(second.current.snapshot).not.toBeNull());
+    const person = seedFamilyTree.people[0];
+    await act(async () => {
+      const pending = first.current.upsertPerson({ ...person, name: "La prima modifica" });
+      expect(await first.current.upsertPerson({ ...person, name: "Doppio invio" })).toBe(false);
+      expect(await pending).toBe(true);
+      await expect(second.current.upsertPerson({ ...person, name: "Scheda obsoleta" }))
+        .rejects.toBeInstanceOf(ArchiveConflictError);
+    });
+    expect(database.snapshot?.people.find(({ id }) => id === person.id)?.name).toBe("La prima modifica");
+    expect(second.current.isVolatile).toBe(false);
   });
 });

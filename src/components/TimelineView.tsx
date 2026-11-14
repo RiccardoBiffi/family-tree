@@ -1,14 +1,16 @@
 "use client";
 
-import { useId, useMemo, useRef, useState } from "react";
+import { Fragment, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import type { PersonRecord } from "@/models/Person";
 import { PersonGlyph } from "@/components/PersonGlyph";
+import { useViewportSize, useVirtualRows } from "@/hooks/useVirtualRows";
 import {
   computeGenerationMap,
   extractYear,
   formatDateLabel,
   getPersonDisplayName,
+  getPartnerComponents,
   matchesPersonQuery,
 } from "@/utils/familyTree";
 
@@ -22,8 +24,6 @@ interface TimelineEntry {
   person: PersonRecord;
   birthYear: number;
   endYear: number;
-  generation: number;
-  highlighted: boolean;
   isLiving: boolean;
 }
 
@@ -32,6 +32,12 @@ interface TimelineGroup {
   entries: TimelineEntry[];
 }
 
+type TimelineRow =
+  | { kind: "generation"; generation: number }
+  | { kind: "person"; entry: TimelineEntry }
+  | { kind: "undated-heading" }
+  | { kind: "undated"; people: PersonRecord[] };
+
 interface AxisMarker {
   year: number;
   isToday: boolean;
@@ -39,6 +45,7 @@ interface AxisMarker {
 }
 
 const ZOOM_LEVELS = [1, 1.25, 1.5, 2, 2.5] as const;
+const AXIS_HEIGHT = 53;
 const GENERATION_NAMES = [
   "Prima",
   "Seconda",
@@ -50,51 +57,25 @@ const GENERATION_NAMES = [
 
 function alignPartnerGenerations(people: PersonRecord[]): Map<string, number> {
   const generations = computeGenerationMap(people);
-  const peopleById = new Map(people.map((person) => [person.id, person]));
-
-  for (let pass = 0; pass < people.length; pass += 1) {
-    let changed = false;
-
-    for (const person of people) {
-      for (const partnerId of person.partnerIds) {
-        if (!peopleById.has(partnerId)) {
-          continue;
-        }
-
-        const sharedGeneration = Math.max(
-          generations.get(person.id) ?? 0,
-          generations.get(partnerId) ?? 0,
-        );
-
-        if ((generations.get(person.id) ?? 0) !== sharedGeneration) {
-          generations.set(person.id, sharedGeneration);
-          changed = true;
-        }
-
-        if ((generations.get(partnerId) ?? 0) !== sharedGeneration) {
-          generations.set(partnerId, sharedGeneration);
-          changed = true;
-        }
-      }
+  for (const component of getPartnerComponents(people)) {
+    let generation = 0;
+    for (const id of component) {
+      generation = Math.max(generation, generations.get(id) ?? 0);
     }
-
-    if (!changed) {
-      break;
-    }
+    for (const id of component) generations.set(id, generation);
   }
 
   return generations;
 }
 
-function buildTimelineData(people: PersonRecord[], query: string) {
+function buildTimelineData(people: PersonRecord[]) {
   const currentYear = new Date().getUTCFullYear();
-  const hasQuery = query.trim().length > 0;
   const generations = alignPartnerGenerations(people);
-  const sourceOrder = new Map(
-    people.map((person, index) => [person.id, index]),
-  );
-  const entries: TimelineEntry[] = [];
   const undatedPeople: PersonRecord[] = [];
+  const groupedEntries = new Map<number, TimelineEntry[]>();
+  let minYear = currentYear;
+  let maxYear = currentYear;
+  let hasDatedPeople = false;
 
   for (const person of people) {
     const birthYear = extractYear(person.birthDate);
@@ -104,59 +85,65 @@ function buildTimelineData(people: PersonRecord[], query: string) {
       continue;
     }
 
-    entries.push({
+    const endYear = Math.max(extractYear(person.deathDate) ?? currentYear, birthYear);
+    const generation = generations.get(person.id) ?? 0;
+    const generationEntries = groupedEntries.get(generation) ?? [];
+    generationEntries.push({
       person,
       birthYear,
-      endYear: Math.max(extractYear(person.deathDate) ?? currentYear, birthYear),
-      generation: generations.get(person.id) ?? 0,
-      highlighted: hasQuery && matchesPersonQuery(person, query),
+      endYear,
       isLiving: person.deathDate === null,
     });
-  }
-
-  const groupedEntries = new Map<number, TimelineEntry[]>();
-
-  for (const entry of entries) {
-    const generationEntries = groupedEntries.get(entry.generation) ?? [];
-    generationEntries.push(entry);
-    groupedEntries.set(entry.generation, generationEntries);
+    groupedEntries.set(generation, generationEntries);
+    minYear = hasDatedPeople ? Math.min(minYear, birthYear) : birthYear;
+    maxYear = Math.max(maxYear, endYear);
+    hasDatedPeople = true;
   }
 
   const groups: TimelineGroup[] = Array.from(groupedEntries.entries())
     .sort(([left], [right]) => left - right)
     .map(([generation, generationEntries]) => ({
       generation,
-      entries: generationEntries.sort((left, right) => {
-        const lineagePriority =
-          Number(right.person.parentIds.length > 0) -
-          Number(left.person.parentIds.length > 0);
-
-        return (
-          lineagePriority ||
-          (sourceOrder.get(left.person.id) ?? 0) -
-            (sourceOrder.get(right.person.id) ?? 0)
-        );
-      }),
+      entries: generationEntries.sort((left, right) =>
+        Number(right.person.parentIds.length > 0) - Number(left.person.parentIds.length > 0),
+      ),
     }));
-  const minYear =
-    entries.length > 0
-      ? Math.min(...entries.map((entry) => entry.birthYear))
-      : currentYear;
-  const maxYear = Math.max(
-    currentYear,
-    entries.length > 0
-      ? Math.max(...entries.map((entry) => entry.endYear))
-      : currentYear,
-  );
 
   return {
     currentYear,
-    entries,
     groups,
     maxYear,
     minYear,
     undatedPeople,
   };
+}
+
+function buildTimelineRows(
+  groups: TimelineGroup[],
+  undatedPeople: PersonRecord[],
+  undatedColumns: number,
+  compact: boolean,
+) {
+  const rows: TimelineRow[] = [];
+  const offsets = [0];
+  const addRow = (row: TimelineRow, height: number) => {
+    rows.push(row);
+    offsets.push(offsets[offsets.length - 1] + height);
+  };
+
+  for (const group of groups) {
+    addRow({ kind: "generation", generation: group.generation }, compact ? 37 : 35);
+    for (const entry of group.entries) addRow({ kind: "person", entry }, compact ? 57 : 52);
+  }
+
+  if (undatedPeople.length) {
+    addRow({ kind: "undated-heading" }, 43);
+    for (let index = 0; index < undatedPeople.length; index += undatedColumns) {
+      addRow({ kind: "undated", people: undatedPeople.slice(index, index + undatedColumns) }, 52);
+    }
+  }
+
+  return { rows, offsets };
 }
 
 function getAxisMarkers(
@@ -307,12 +294,14 @@ function TimelineAxis({
 
 interface TimelineBarProps extends TimelineGridProps {
   entry: TimelineEntry;
+  highlighted: boolean;
 }
 
 function TimelineBar({
   axisEndYear,
   axisStartYear,
   entry,
+  highlighted,
   markers,
 }: TimelineBarProps) {
   const startPosition = getPosition(
@@ -342,7 +331,7 @@ function TimelineBar({
         className={[
           "absolute top-1/2 h-7 -translate-y-1/2 rounded-md",
           entry.isLiving ? "bg-[#4f765f]" : "bg-[#3b3d3c]",
-          entry.highlighted
+          highlighted
             ? "outline-2 outline-offset-2 outline-[#173c2a]"
             : "",
         ].join(" ")}
@@ -393,6 +382,135 @@ function TimelineBar({
   );
 }
 
+interface TimelineRowProps extends TimelineGridProps {
+  row: TimelineRow;
+  index: number;
+  height: number;
+  highlightIds: ReadonlySet<string> | null;
+  onSelectPerson: (personId: string) => void;
+  undatedColumns: number;
+}
+
+function TimelineRowContent({
+  row,
+  index,
+  height,
+  highlightIds,
+  onSelectPerson,
+  undatedColumns,
+  ...gridProps
+}: TimelineRowProps) {
+  const isDimmed = (personId: string) => Boolean(highlightIds && !highlightIds.has(personId));
+  if (row.kind === "generation") {
+    return (
+      <div className="grid grid-cols-[var(--timeline-name-column)_minmax(0,1fr)] border-b border-[#d7ddd8] bg-[#f4f7f4]" style={{ height }}>
+        <h3 className="sticky left-0 z-20 flex items-center border-r border-[#d7ddd8] bg-[#f4f7f4] px-3 text-xs font-semibold text-[#173c2a] sm:px-5 sm:text-sm">
+          {getGenerationLabel(row.generation)}
+        </h3>
+        <div aria-hidden="true" className="relative">
+          <TimelineGrid {...gridProps} />
+        </div>
+      </div>
+    );
+  }
+
+  if (row.kind === "undated-heading") {
+    return (
+      <h3 className="sticky left-0 flex items-center border-t border-[#d7ddd8] bg-[#f7f9f7] px-3 text-xs font-semibold text-[#173c2a] sm:px-5 sm:text-sm" style={{ height }}>
+        Data di nascita non disponibile
+      </h3>
+    );
+  }
+
+  if (row.kind === "undated") {
+    return (
+      <div
+        className="sticky left-0 grid w-[var(--timeline-viewport-width)] gap-2 bg-[#f7f9f7] px-3 pb-2 sm:px-5"
+        data-virtual-row={index}
+        style={{ height, gridTemplateColumns: `repeat(${undatedColumns}, minmax(0, 1fr))` }}
+      >
+        {row.people.map((person, itemIndex) => {
+          const displayName = getPersonDisplayName(person);
+          return (
+            <button
+              className={[
+                "min-h-11 min-w-0 rounded-lg border bg-white px-2 text-sm font-medium text-[#26342d] outline-none transition-colors duration-150 hover:border-[#173c2a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#173c2a] motion-reduce:transition-none",
+                highlightIds?.has(person.id) ? "border-[#173c2a] bg-[#edf4ef]" : "border-[#d7ddd8]",
+                isDimmed(person.id) ? "opacity-45 hover:opacity-100 focus-visible:opacity-100" : "",
+              ].join(" ")}
+              data-virtual-item={itemIndex}
+              key={person.id}
+              onClick={() => onSelectPerson(person.id)}
+              title={displayName}
+              type="button"
+            >
+              <span className="block truncate">{displayName}</span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  const { entry } = row;
+  const { person } = entry;
+  const highlighted = highlightIds?.has(person.id) ?? false;
+  const displayName = getLegalName(person);
+  const endLabel = entry.isLiving ? "oggi" : entry.endYear;
+  const rowBackground = highlighted ? "bg-[#edf4ef]" : "bg-white";
+
+  return (
+    <button
+      aria-label={`Apri la scheda di ${displayName}, ${formatDateLabel(person.birthDate)} - ${person.deathDate ? formatDateLabel(person.deathDate) : "oggi"}`}
+      className={[
+        "group grid w-full grid-cols-[var(--timeline-name-column)_minmax(0,1fr)] text-left outline-none transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#173c2a] motion-reduce:transition-none",
+        rowBackground,
+        isDimmed(person.id) ? "opacity-45 hover:opacity-100 focus-visible:opacity-100" : "",
+      ].join(" ")}
+      data-virtual-row={index}
+      onClick={() => onSelectPerson(person.id)}
+      style={{ height }}
+      title={`${displayName}: ${entry.birthYear} - ${endLabel}`}
+      type="button"
+    >
+      <span
+        className={[
+          "sticky left-0 z-10 flex h-full min-w-0 items-center gap-2 border-r border-b border-[#d7ddd8] px-2 transition-colors duration-150 group-hover:bg-[#f4f7f4] motion-reduce:transition-none sm:gap-3 sm:px-5",
+          rowBackground,
+        ].join(" ")}
+      >
+        <span
+          aria-hidden="true"
+          className="flex size-8 shrink-0 items-center justify-center rounded-full border border-[#b8c7bc] bg-[#e8efe9] text-[#173c2a] sm:size-9"
+        >
+          <PersonGlyph className="size-[18px] sm:size-5" sex={person.sex} />
+        </span>
+        <span className="min-w-0">
+          <span className="line-clamp-2 text-[11px] font-semibold leading-3 text-[#202723] sm:block sm:truncate sm:text-sm sm:leading-normal">
+            {displayName}
+          </span>
+          <span className="mt-0.5 block text-[10px] text-[#66736b] sm:text-xs">
+            {entry.birthYear}
+          </span>
+          {highlighted ? <span className="sr-only">Corrispondenza della ricerca.</span> : null}
+        </span>
+      </span>
+      <div className="border-b border-[#d7ddd8]">
+        <TimelineBar {...gridProps} entry={entry} highlighted={highlighted} />
+      </div>
+    </button>
+  );
+}
+
+function getTimelineRowKey(row: TimelineRow): string {
+  switch (row.kind) {
+    case "generation": return `generation:${row.generation}`;
+    case "person": return `person:${row.entry.person.id}`;
+    case "undated-heading": return "undated-heading";
+    case "undated": return `undated:${row.people[0].id}`;
+  }
+}
+
 export function TimelineView({
   people,
   query,
@@ -400,18 +518,39 @@ export function TimelineView({
 }: TimelineViewProps) {
   const {
     currentYear,
-    entries,
     groups,
     maxYear,
     minYear,
     undatedPeople,
-  } = useMemo(() => buildTimelineData(people, query), [people, query]);
+  } = useMemo(() => buildTimelineData(people), [people]);
   const [zoom, setZoom] = useState<number>(1);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const { compact, height, width } = useViewportSize(viewportRef);
+  const undatedColumns = Math.max(1, Math.floor(width / 176));
+  const { rows, offsets } = useMemo(
+    () => buildTimelineRows(groups, undatedPeople, undatedColumns, compact),
+    [compact, groups, undatedColumns, undatedPeople],
+  );
+  const { visibleRows, totalHeight, onRowBlur, onRowFocus, onRowKeyDown } = useVirtualRows(
+    viewportRef,
+    height,
+    offsets,
+    AXIS_HEIGHT,
+    (index) => {
+      const row = rows[index];
+      return row.kind === "person" ? 1 : row.kind === "undated" ? row.people.length : 0;
+    },
+  );
   const titleId = useId();
   const descriptionId = useId();
-  const hasQuery = query.trim().length > 0;
-  const highlightedCount = entries.filter((entry) => entry.highlighted).length;
+  const highlightIds = useMemo(() => {
+    if (!query.trim()) return null;
+    const matches = new Set<string>();
+    for (const person of people) {
+      if (matchesPersonQuery(person, query)) matches.add(person.id);
+    }
+    return matches;
+  }, [people, query]);
   const axisStartYear = Math.floor(minYear / 10) * 10;
   const markers = useMemo(
     () => getAxisMarkers(axisStartYear, maxYear, currentYear),
@@ -467,24 +606,28 @@ export function TimelineView({
         <span>
           Intervallo {minYear} - {currentYear}
         </span>
-        {hasQuery ? (
-          <span>{highlightedCount} corrispondenze evidenziate</span>
+        {highlightIds ? (
+          <span aria-live="polite">{highlightIds.size} corrispondenze evidenziate</span>
         ) : null}
       </div>
 
       <div
         aria-describedby={descriptionId}
         aria-label={`Timeline familiare, intervallo ${minYear} - ${rangeEndLabel}`}
-        className="relative min-h-0 flex-1 overflow-auto overscroll-contain bg-white outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#173c2a] [scrollbar-gutter:stable]"
+        className="relative min-h-0 flex-1 overflow-auto overscroll-contain bg-white outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#173c2a] [overflow-anchor:none] [scrollbar-gutter:stable]"
+        onBlurCapture={onRowBlur}
+        onFocusCapture={onRowFocus}
+        onKeyDown={onRowKeyDown}
         ref={viewportRef}
         tabIndex={0}
       >
         <div
           className="[--timeline-name-column:8.25rem] sm:[--timeline-name-column:13.5rem] lg:[--timeline-name-column:15rem]"
           style={{
+            "--timeline-viewport-width": `${width}px`,
             minWidth: "100%",
             width: `${zoom * 100}%`,
-          }}
+          } as CSSProperties}
         >
           <div className="sticky top-0 z-30 grid grid-cols-[var(--timeline-name-column)_minmax(0,1fr)] border-b border-[#d7ddd8] bg-white">
             <div className="sticky left-0 z-40 flex h-[52px] items-center border-r border-[#d7ddd8] bg-white px-3 text-xs font-semibold text-[#173c2a] sm:px-5 sm:text-sm">
@@ -498,137 +641,34 @@ export function TimelineView({
             />
           </div>
 
-          {groups.map((group) => {
-            const groupTitleId = `${titleId}-generation-${group.generation}`;
-
+          {visibleRows.map((index, position) => {
+            const row = rows[index];
+            const previous = position === 0 ? 0 : visibleRows[position - 1] + 1;
+            const gap = offsets[index] - offsets[previous];
             return (
-              <section aria-labelledby={groupTitleId} key={group.generation}>
-                <div className="grid grid-cols-[var(--timeline-name-column)_minmax(0,1fr)] border-b border-[#d7ddd8] bg-[#f4f7f4]">
-                  <h3
-                    className="sticky left-0 z-20 flex min-h-9 items-center border-r border-[#d7ddd8] bg-[#f4f7f4] px-3 text-xs font-semibold text-[#173c2a] sm:min-h-[34px] sm:px-5 sm:text-sm"
-                    id={groupTitleId}
-                  >
-                    {getGenerationLabel(group.generation)}
-                  </h3>
-                  <div
-                    aria-hidden="true"
-                    className="relative min-h-9 sm:min-h-[34px]"
-                  >
-                    <TimelineGrid
-                      axisEndYear={maxYear}
-                      axisStartYear={axisStartYear}
-                      markers={markers}
-                    />
-                  </div>
-                </div>
-
-                {group.entries.map((entry) => {
-                  const displayName = getLegalName(entry.person);
-                  const endLabel = entry.isLiving ? "oggi" : entry.endYear;
-                  const highlighted = hasQuery && entry.highlighted;
-                  const rowBackground = highlighted
-                    ? "bg-[#edf4ef]"
-                    : "bg-white";
-
-                  return (
-                    <button
-                      aria-label={`Apri la scheda di ${displayName}, ${formatDateLabel(entry.person.birthDate)} - ${
-                        entry.person.deathDate
-                          ? formatDateLabel(entry.person.deathDate)
-                          : "oggi"
-                      }`}
-                      className={[
-                        "group grid w-full grid-cols-[var(--timeline-name-column)_minmax(0,1fr)] text-left outline-none transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#173c2a] motion-reduce:transition-none",
-                        rowBackground,
-                        hasQuery && !entry.highlighted
-                          ? "opacity-45 hover:opacity-100 focus-visible:opacity-100"
-                          : "",
-                      ].join(" ")}
-                      key={entry.person.id}
-                      onClick={() => onSelectPerson(entry.person.id)}
-                      title={`${displayName}: ${entry.birthYear} - ${endLabel}`}
-                      type="button"
-                    >
-                      <span
-                        className={[
-                          "sticky left-0 z-10 flex h-14 min-w-0 items-center gap-2 border-r border-b border-[#d7ddd8] px-2 transition-colors duration-150 group-hover:bg-[#f4f7f4] motion-reduce:transition-none sm:h-[51px] sm:gap-3 sm:px-5",
-                          rowBackground,
-                        ].join(" ")}
-                      >
-                        <span
-                          aria-hidden="true"
-                          className="flex size-8 shrink-0 items-center justify-center rounded-full border border-[#b8c7bc] bg-[#e8efe9] text-[#173c2a] sm:size-9"
-                        >
-                          <PersonGlyph
-                            className="size-[18px] sm:size-5"
-                            sex={entry.person.sex}
-                          />
-                        </span>
-                        <span className="min-w-0">
-                          <span className="line-clamp-2 text-[11px] font-semibold leading-3 text-[#202723] sm:block sm:truncate sm:text-sm sm:leading-normal">
-                            {displayName}
-                          </span>
-                          <span className="mt-0.5 block text-[10px] text-[#66736b] sm:text-xs">
-                            {entry.birthYear}
-                          </span>
-                          {highlighted ? (
-                            <span className="sr-only">
-                              Corrispondenza della ricerca.
-                            </span>
-                          ) : null}
-                        </span>
-                      </span>
-                      <div className="border-b border-[#d7ddd8]">
-                        <TimelineBar
-                          axisEndYear={maxYear}
-                          axisStartYear={axisStartYear}
-                          entry={entry}
-                          markers={markers}
-                        />
-                      </div>
-                    </button>
-                  );
-                })}
-              </section>
+              <Fragment key={getTimelineRowKey(row)}>
+                {gap > 0 ? <div aria-hidden="true" style={{ height: gap }} /> : null}
+                <TimelineRowContent
+                  axisEndYear={maxYear}
+                  axisStartYear={axisStartYear}
+                  height={offsets[index + 1] - offsets[index]}
+                  highlightIds={highlightIds}
+                  index={index}
+                  markers={markers}
+                  onSelectPerson={onSelectPerson}
+                  row={row}
+                  undatedColumns={undatedColumns}
+                />
+              </Fragment>
             );
           })}
-
-          {entries.length === 0 && undatedPeople.length === 0 ? (
+          {rows.length > 0 ? (
+            <div aria-hidden="true" style={{ height: totalHeight - offsets[(visibleRows.at(-1) ?? -1) + 1] }} />
+          ) : (
             <div className="flex min-h-40 items-center justify-center px-5 text-center text-sm text-[#66736b]">
               Nessuna persona disponibile nella timeline.
             </div>
-          ) : null}
-
-          {undatedPeople.length > 0 ? (
-            <section className="border-t border-[#d7ddd8] bg-[#f7f9f7] px-3 py-4 sm:px-5">
-              <h3 className="text-xs font-semibold text-[#173c2a] sm:text-sm">
-                Data di nascita non disponibile
-              </h3>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {undatedPeople.map((person) => {
-                  const highlighted =
-                    hasQuery && matchesPersonQuery(person, query);
-
-                  return (
-                    <button
-                      className={[
-                        "min-h-11 rounded-lg border bg-white px-3 py-2 text-sm font-medium text-[#26342d] outline-none transition-colors duration-150 hover:border-[#6f9a7d] hover:bg-[#edf4ef] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#173c2a] motion-reduce:transition-none",
-                        highlighted
-                          ? "border-[#173c2a] bg-[#edf4ef]"
-                          : "border-[#d7ddd8]",
-                        hasQuery && !highlighted ? "opacity-45" : "",
-                      ].join(" ")}
-                      key={person.id}
-                      onClick={() => onSelectPerson(person.id)}
-                      type="button"
-                    >
-                      {getPersonDisplayName(person)}
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          ) : null}
+          )}
         </div>
       </div>
 

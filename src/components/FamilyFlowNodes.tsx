@@ -2,6 +2,7 @@
 /* eslint-disable @next/next/no-img-element */
 
 import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { createContext, useContext } from "react";
 
 import { PersonGlyph } from "@/components/PersonGlyph";
 import type { PersonSex } from "@/models/Person";
@@ -11,15 +12,20 @@ export interface FamilyTreeNodeData extends Record<string, unknown> {
   birthPlace: string | null;
   compact: boolean;
   displayLabel: string;
-  highlighted: boolean;
   label: string;
-  onSelect: () => void;
+  personId: string;
   photo: string | null;
   profession: string | null;
   secondaryLabel: string;
-  selected: boolean;
   sex: PersonSex;
 }
+
+export const FamilyTreeNodeContext = createContext<{
+  highlightedIds: ReadonlySet<string>;
+  onSelectPerson: (personId: string) => void;
+  photoUrls?: ReadonlyMap<string, string>;
+  selectedPersonId: string | null;
+} | null>(null);
 
 export type FamilyJunctionNodeData = Record<string, never>;
 
@@ -49,6 +55,7 @@ function PersonAvatar({
           "shrink-0 rounded-full border border-[#aab7a9] object-cover",
           compact ? "h-8 w-8" : "h-11 w-11",
         ].join(" ")}
+        decoding="async"
         src={photo}
       />
     );
@@ -72,6 +79,9 @@ function PersonAvatar({
 
 export function FamilyTreeNode({ data }: NodeProps) {
   const nodeData = data as unknown as FamilyTreeNodeData;
+  const interaction = useContext(FamilyTreeNodeContext);
+  const selected = interaction?.selectedPersonId === nodeData.personId;
+  const highlighted = interaction?.highlightedIds.has(nodeData.personId);
 
   return (
     <>
@@ -95,24 +105,24 @@ export function FamilyTreeNode({ data }: NodeProps) {
             ? "flex-col items-center justify-center gap-1 px-1.5 py-1.5 text-center"
             : "items-center gap-3 px-3 py-2.5 text-left",
           "transition-[border-color,box-shadow,background-color] hover:border-[#6d8d76] hover:bg-[#fdfefb] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[#17452d]/35 motion-reduce:transition-none",
-          nodeData.selected
+          selected
             ? "border-2 border-[#17452d] bg-[#f1f6ef] shadow-[0_0_0_3px_rgba(23,69,45,0.18),0_8px_22px_rgba(20,53,36,0.1)]"
-            : nodeData.highlighted
+            : highlighted
             ? "border-2 border-[#c8791a] bg-[#fffaf0] shadow-[0_0_0_3px_rgba(200,121,26,0.18),0_8px_22px_rgba(20,53,36,0.1)]"
             : "border-[#315a40]",
         ].join(" ")}
-        data-query-match={nodeData.highlighted ? "true" : undefined}
-        data-selected={nodeData.selected ? "true" : undefined}
+        data-query-match={highlighted ? "true" : undefined}
+        data-selected={selected ? "true" : undefined}
         onClick={(event) => {
           event.stopPropagation();
-          nodeData.onSelect();
+          interaction?.onSelectPerson(nodeData.personId);
         }}
         title={nodeData.ariaLabel}
         type="button"
       >
         <PersonAvatar
           compact={nodeData.compact}
-          photo={nodeData.photo}
+          photo={interaction?.photoUrls?.get(nodeData.personId) ?? nodeData.photo}
           sex={nodeData.sex}
         />
         <span className="min-w-0 flex-1">
