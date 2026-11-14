@@ -283,7 +283,7 @@ export function ArchiveActions({
         <p
           aria-live="polite"
           className={[
-            "absolute right-0 top-full z-40 mt-2 max-w-[min(20rem,calc(100vw-2rem))] rounded-lg border bg-white px-3 py-2 text-sm shadow-[0_12px_32px_rgba(24,45,31,0.14)]",
+            "pointer-events-none absolute right-0 top-full z-40 mt-2 max-w-[min(20rem,calc(100vw-2rem))] rounded-lg border bg-white px-3 py-2 text-sm shadow-[0_12px_32px_rgba(24,45,31,0.14)]",
             feedback.tone === "error"
               ? "border-[#d8a5a5] text-[#8b3030]"
               : "border-[#b9c5b8] text-[#26372c]",
