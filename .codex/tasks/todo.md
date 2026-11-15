@@ -331,3 +331,62 @@
   e l’importazione da zero a cinque successi su cinque.
 - L’HTML offline è un singolo file da 599.628 byte senza risorse esterne o
   media incorporati. La minimappa mantiene un elemento SVG per persona.
+
+# Verifica archivio Ferraro e controlli di coerenza
+
+- [x] Aprire Ferraro in un contesto isolato e documentare gli incroci ambigui nel Diagramma.
+- [x] Mostrare i controlli per criterio in un popup con accesso alle schede.
+- [x] Mostrare un toast persistente e richiudibile in basso al centro.
+- [x] Impedire nuove associazioni oltre due genitori, mantenendo riparabili gli archivi importati.
+- [x] Verificare il comportamento in Chrome desktop e mobile.
+
+## Esito
+
+- Ferraro è stato importato in contesti Chrome isolati a 1440 × 900 e 390 × 844.
+- Documentate le linee sovrapposte nel Diagramma e preparato uno schema di diramazioni per coppia.
+- Verificati toast, popup con i nomi attesi, collegamento alla scheda, correzione di Mia, chiusura e refresh.
+- Lint, TypeScript, 72 test Vitest, build e accettazione offline superati.
+
+# Diramazioni e tipi di genitore nel Diagramma
+
+- [x] Controllare le corsie delle unioni e raggruppare i figli per coppia.
+- [x] Distinguere genitori biologici e adottivi nelle schede e scegliere la coppia da mostrare.
+- [x] Verificare il controllo di coerenza e la compatibilità dei file .albero.
+- [x] Importare Ferraro in un archivio isolato e verificare desktop e mobile.
+
+## Esito
+
+- Su Ferraro, Chrome ha verificato 38 tracciati SVG e 28 segmenti orizzontali a entrambe le larghezze, senza sovrapposizioni.
+- Verificata la scelta di Nora e Dario per il Diagramma di Mia, mantenendo Marta come biologica, con refresh e controllo dell’export .albero.
+- Pipeline completa di rilascio, 79 test e accettazione offline superati.
+
+# Annotazioni Cronologia e rifiniture dell’archivio
+
+- [x] Mostrare gli anni di vita e verificare le etichette delle barre in base alla larghezza effettiva.
+- [x] Mantenere ordine e visibilità delle colonne nel browser dopo il refresh.
+- [x] Verificare import da primo avvio e famiglia iniziale.
+- [x] Localizzare le interfacce e verificare ricerca nel Diagramma e intestazione fissa nella scheda.
+- [x] Ripetere la prova Ferraro a 1262 × 1243 e su mobile.
+
+## Esito
+
+- In Chrome a 1262 × 1243, la barra di Amir misura 191 px e contiene entrambe le etichette. A 390 × 844 le date restano sotto il nome.
+- Verificati ordine e visibilità delle colonne dopo refresh, evidenziazione del diagramma e scroll interno alla scheda a entrambe le larghezze.
+- Primo accesso verificato sulle rotte web / e /admin e nell’HTML offline, con creazione dei tre familiari e import di un archivio esistente.
+- Pipeline di rilascio, 85 test e accettazione offline passati.
+
+# Rifiniture Cronologia e toast
+
+- [x] Togliere «oggi» dalle etichette individuali e compattare i separatori.
+- [x] Togliere lo spazio riservato al toast e applicare la tonalità rossa.
+- [x] Verificare il layout con Ferraro su desktop e mobile.
+
+## Esito
+
+- Su Ferraro, Chrome conferma etichette, separatori più compatti e dimensioni invariate al cambio di visibilità del toast a 1262 × 1243 e 390 × 844. Passano lint, TypeScript, 13 test e build offline.
+
+# Pubblicazione su GitHub Pages
+
+- [x] Attivare Pages e aggiungere la pubblicazione da main.
+- [ ] Pubblicare il sito e collegarlo dalla pagina personale.
+- [ ] Verificare la revisione pubblicata.

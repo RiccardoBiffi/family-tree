@@ -8,6 +8,7 @@ import {
   FAMILY_TREE_VERSION,
   type FamilyTreeSnapshot,
 } from "@/models/FamilyTree";
+import { getBiologicalParentIds, getDiagramParentIds, getFamilyTreeIssues } from "@/utils/familyTree";
 import { LocalStorageDB } from "@/utils/localStorageDB";
 import { mockArchiveDB } from "@/test/mockArchiveDB";
 import { createMediaAssetRecord } from "@/models/MediaAsset";
@@ -51,7 +52,7 @@ describe("useFamilyTreeStore relationship persistence", () => {
         instruction: "Laurea in architettura",
         tags: ["archivio", "famiglia"],
         parentIds: ["p6"],
-        childIds: ["p9"],
+        childIds: ["p2"],
         partnerIds: ["p4"],
       })).toBe(true);
     });
@@ -80,7 +81,7 @@ describe("useFamilyTreeStore relationship persistence", () => {
       instruction: "Laurea in architettura",
       tags: ["archivio", "famiglia"],
       parentIds: ["p6"],
-      childIds: ["p9"],
+      childIds: ["p2"],
       partnerIds: ["p4"],
       createdAt: originalPerson.createdAt,
     });
@@ -91,7 +92,7 @@ describe("useFamilyTreeStore relationship persistence", () => {
 
     expect(findPerson(reloaded, "p7").parentIds).not.toContain("p3");
     expect(findPerson(reloaded, "p8").parentIds).not.toContain("p3");
-    expect(findPerson(reloaded, "p9").parentIds).toContain("p3");
+    expect(findPerson(reloaded, "p2").parentIds).toContain("p3");
 
     expect(findPerson(reloaded, "p5").partnerIds).not.toContain("p3");
     expect(findPerson(reloaded, "p4").partnerIds).toContain("p3");
@@ -102,6 +103,69 @@ describe("useFamilyTreeStore relationship persistence", () => {
     expect(stored?.version).toBe(FAMILY_TREE_VERSION);
     expect(findPerson(stored!, "p3").name).toBe(originalPerson.name);
     expect(database.commit).toHaveBeenCalledTimes(2);
+  });
+
+  it("adds a third parent through a reciprocal edit and keeps the selected parents through reload", async () => {
+    new LocalStorageDB().save(seedFamilyTree);
+    const { result } = renderHook(() => useFamilyTreeStore());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+
+    const existing = findPerson(result.current.snapshot!, "p3");
+    const addedParent = findPerson(result.current.snapshot!, "p6");
+    await act(async () => {
+      await expect(result.current.upsertPerson({
+        ...addedParent,
+        childIds: [...addedParent.childIds, existing.id],
+      })).resolves.toBe(true);
+    });
+
+    const child = findPerson(result.current.snapshot!, "p3");
+    expect(child.parentIds).toEqual(["p1", "p2", "p6"]);
+    expect(getBiologicalParentIds(child)).toEqual(["p1", "p2"]);
+    expect(getDiagramParentIds(child)).toEqual([]);
+    expect(getFamilyTreeIssues(result.current.snapshot!)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "diagram-parents", personIds: ["p3"] })]),
+    );
+
+    await act(async () => {
+      await expect(result.current.upsertPerson({
+        ...child,
+        biologicalParentIds: ["p2"],
+        diagramParentIds: ["p2", "p6"],
+      })).resolves.toBe(true);
+    });
+
+    const { result: reopened } = renderHook(() => useFamilyTreeStore());
+    await waitFor(() => expect(reopened.current.snapshot).not.toBeNull());
+    const reloadedChild = findPerson(reopened.current.snapshot!, "p3");
+    expect(getBiologicalParentIds(reloadedChild)).toEqual(["p2"]);
+    expect(getDiagramParentIds(reloadedChild)).toEqual(["p2", "p6"]);
+    expect(getFamilyTreeIssues(reopened.current.snapshot!).map(({ id }) => id)).not.toContain("diagram-parents");
+  });
+
+  it("removes an obsolete diagram choice when the corresponding parent deletes the child link", async () => {
+    new LocalStorageDB().save(seedFamilyTree);
+    const { result } = renderHook(() => useFamilyTreeStore());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+
+    const child = findPerson(result.current.snapshot!, "p3");
+    await act(async () => {
+      await result.current.upsertPerson({
+        ...child,
+        parentIds: ["p1", "p2", "p5", "p6"],
+        biologicalParentIds: ["p2", "p6"],
+        diagramParentIds: ["p1", "p6"],
+      });
+    });
+    const parent = findPerson(result.current.snapshot!, "p6");
+    await act(async () => {
+      await result.current.upsertPerson({ ...parent, childIds: parent.childIds.filter((id) => id !== child.id) });
+    });
+    const updated = findPerson(result.current.snapshot!, child.id);
+    expect(updated.parentIds).toEqual(["p1", "p2", "p5"]);
+    expect(updated.biologicalParentIds).toEqual(["p2"]);
+    expect(updated.diagramParentIds).toEqual(["p1"]);
+    expect(getDiagramParentIds(updated)).toEqual([]);
   });
 
   it("persists removing every parent, child, and partner with reciprocal edges cleared", async () => {
@@ -163,8 +227,8 @@ describe("useFamilyTreeStore relationship persistence", () => {
       });
     });
 
-    expect(result.current.snapshot?.people).toHaveLength(1);
-    expect(result.current.snapshot?.people[0].id).toBe("volatile-person");
+    expect(result.current.snapshot?.people).toHaveLength(4);
+    expect(result.current.snapshot?.people.some(({ id }) => id === "volatile-person")).toBe(true);
     expect(result.current.isVolatile).toBe(true);
 
     getItem.mockRestore();

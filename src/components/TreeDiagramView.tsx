@@ -10,17 +10,17 @@ import {
   MiniMap,
   Position,
   ReactFlow,
-  type Edge,
   type Node,
   type ReactFlowInstance,
 } from "@xyflow/react";
 
 import {
+  familyEdgeTypes,
   familyNodeTypes,
-  type FamilyJunctionNodeData,
   type FamilyTreeNodeData,
   FamilyTreeNodeContext,
 } from "@/components/FamilyFlowNodes";
+import { buildFamilyRoutes, getDiagramParentGroup, type DiagramPosition } from "@/components/familyDiagramRoutes";
 import { parseMediaAssetReference } from "@/models/MediaAsset";
 import type { PersonRecord } from "@/models/Person";
 import {
@@ -46,12 +46,6 @@ interface DiagramPersonPosition {
   id: string;
   x: number;
   y: number;
-}
-
-interface PartnerUnion {
-  id: string;
-  leftId: string;
-  rightId: string;
 }
 
 interface DiagramLayout {
@@ -86,7 +80,6 @@ const COMPACT_BREAKPOINT = "(max-width: 639px)";
 const WIDE_PADDING = { bottom: "72px", left: "36px", right: "36px", top: "28px" } as const;
 const COMPACT_PADDING = { bottom: "68px", left: "8px", right: "8px", top: "8px" } as const;
 const EMPTY_IDS: ReadonlySet<string> = new Set();
-const DEFAULT_EDGE_OPTIONS = { type: "smoothstep" };
 const PRO_OPTIONS = { hideAttribution: true };
 const ARIA_LABELS = {
   "controls.ariaLabel": "Controlli del diagramma",
@@ -94,6 +87,9 @@ const ARIA_LABELS = {
   "controls.zoomIn.ariaLabel": "Ingrandisci il diagramma",
   "controls.zoomOut.ariaLabel": "Riduci il diagramma",
   "minimap.ariaLabel": "Minimappa del diagramma genealogico",
+  "node.a11yDescription.default": "Premi Invio per aprire la scheda della persona o evidenziare il ramo.",
+  "node.a11yDescription.keyboardDisabled": "Seleziona una persona per aprire la scheda.",
+  "edge.a11yDescription.default": "Collegamento tra persone nel diagramma.",
 };
 
 function subscribeToCompactLayout(onChange: () => void) {
@@ -110,29 +106,16 @@ function getLegalName(person: PersonRecord): string {
   return [person.name, person.surname].filter(Boolean).join(" ").trim() || "Persona senza nome";
 }
 
-function getPartnerKey(leftId: string, rightId: string): string {
-  return leftId <= rightId
-    ? JSON.stringify([leftId, rightId])
-    : JSON.stringify([rightId, leftId]);
-}
-
 function getPersonNodeId(personId: string): string {
   // Flow interpolates the ID inside a CSS attribute selector.
   return `person-${encodeURIComponent(JSON.stringify(personId))}`;
 }
 
-function makeHandles(width: number, height: number, junction = false): NonNullable<Node["handles"]> {
-  const centerX = width / 2;
-  const centerY = height / 2;
-  const handles: NonNullable<Node["handles"]> = [
-    { id: "left", x: 0, y: centerY, position: Position.Left, type: "target", width: 0, height: 0 },
-    { id: "right", x: width, y: centerY, position: Position.Right, type: "source", width: 0, height: 0 },
-    { id: "bottom", x: centerX, y: height, position: Position.Bottom, type: "source", width: 0, height: 0 },
+function makeHandles(width: number, height: number): NonNullable<Node["handles"]> {
+  return [
+    { id: "top", x: width / 2, y: 0, position: Position.Top, type: "target", width: 0, height: 0 },
+    { id: "bottom", x: width / 2, y: height, position: Position.Bottom, type: "source", width: 0, height: 0 },
   ];
-  if (!junction) {
-    handles.push({ id: "top", x: centerX, y: 0, position: Position.Top, type: "target", width: 0, height: 0 });
-  }
-  return handles;
 }
 
 function comparePeopleForLayout(left: PersonRecord, right: PersonRecord): number {
@@ -149,8 +132,13 @@ function comparePeopleForLayout(left: PersonRecord, right: PersonRecord): number
   return dateComparison || getLegalName(left).localeCompare(getLegalName(right), "it");
 }
 
-function buildGenerationClusters(bucket: PersonRecord[]): PersonCluster[] {
-  const sortedBucket = [...bucket].sort(comparePeopleForLayout);
+function buildGenerationClusters(bucket: PersonRecord[], groups: ReadonlyMap<string, string>): PersonCluster[] {
+  const sortedBucket = [...bucket].sort((left, right) => {
+    const leftGroup = groups.get(left.id) ?? "";
+    const rightGroup = groups.get(right.id) ?? "";
+    return Number(!leftGroup) - Number(!rightGroup) ||
+      leftGroup.localeCompare(rightGroup) || comparePeopleForLayout(left, right);
+  });
   const peopleById = new Map(sortedBucket.map((person) => [person.id, person]));
   const visited = new Set<string>();
   const clusters: PersonCluster[] = [];
@@ -160,9 +148,11 @@ function buildGenerationClusters(bucket: PersonRecord[]): PersonCluster[] {
       continue;
     }
 
-    const partner = person.partnerIds
-      .map((partnerId) => peopleById.get(partnerId))
-      .find((candidate): candidate is PersonRecord => Boolean(candidate && !visited.has(candidate.id)));
+    const group = groups.get(person.id);
+    const partnerId = person.partnerIds.find(
+      (id) => peopleById.has(id) && !visited.has(id) && groups.get(id) === group,
+    );
+    const partner = partnerId ? peopleById.get(partnerId) : undefined;
 
     const members = partner ? [person, partner] : [person];
     members.forEach((member) => visited.add(member.id));
@@ -228,10 +218,9 @@ function buildPersonAriaLabel(person: PersonRecord): string {
   return `${details.join(", ")}. Apri la scheda personale`;
 }
 
-function buildTreeNodes(people: PersonRecord[], layout: DiagramLayout) {
+function buildTreeDiagram(people: PersonRecord[], layout: DiagramLayout) {
   const generations = computeDiagramGenerationMap(people);
   const generationBuckets = new Map<number, PersonRecord[]>();
-
   for (const person of people) {
     const generation = generations.get(person.id) ?? 0;
     const bucket = generationBuckets.get(generation) ?? [];
@@ -239,262 +228,80 @@ function buildTreeNodes(people: PersonRecord[], layout: DiagramLayout) {
     generationBuckets.set(generation, bucket);
   }
 
-  const rows = Array.from(generationBuckets.entries())
+  const groups = new Map(people.map((person) => [person.id, getDiagramParentGroup(person)]));
+  const rows = [...generationBuckets]
     .sort(([left], [right]) => left - right)
     .map(([, bucket]) => {
-      const clusters = buildGenerationClusters(bucket);
+      const clusters = buildGenerationClusters(bucket, groups);
       return { clusters, width: getRowWidth(clusters, layout) };
     });
   const graphWidth = rows.reduce((width, row) => Math.max(width, row.width), layout.nodeWidth);
-  const nodes: Node[] = [];
-  const positionById = new Map<string, DiagramPersonPosition>();
-  const unionsByPersonId = new Map<string, PartnerUnion>();
-  const unionsByPartnerKey = new Map<string, PartnerUnion>();
-  const measured = { width: layout.nodeWidth, height: layout.nodeHeight };
-  const handles = makeHandles(layout.nodeWidth, layout.nodeHeight);
-  const junctionSize = { width: 2, height: 2 };
-  const junctionHandles = makeHandles(2, 2, true);
-
+  const positions = new Map<string, DiagramPosition>();
   rows.forEach((row, rowIndex) => {
     let cursorX = (graphWidth - row.width) / 2;
-    const y = rowIndex * layout.generationGap;
-
-    row.clusters.forEach((cluster) => {
+    for (const cluster of row.clusters) {
       cluster.members.forEach((person, memberIndex) => {
-        const x =
-          cursorX +
-          memberIndex * (layout.nodeWidth + layout.coupleGap);
-        const legalName = getLegalName(person);
-        const lifeSpan = getLifeSpanLabel(person);
-        const ariaLabel = buildPersonAriaLabel(person);
-
-        const nodeId = getPersonNodeId(person.id);
-        positionById.set(person.id, { id: nodeId, x, y });
-        nodes.push({
-          id: nodeId,
-          type: "familyTree",
-          position: { x, y },
-          ...measured,
-          measured,
-          handles,
-          data: {
-            ariaLabel,
-            birthPlace: person.birthPlace,
-            compact: layout.compact,
-            displayLabel: legalName,
-            label: getPersonDisplayName(person),
-            personId: person.id,
-            photo: parseMediaAssetReference(person.photo) ? null : person.photo,
-            profession: person.profession,
-            secondaryLabel: lifeSpan.replace(" - ", "–"),
-            sex: person.sex,
-          } satisfies FamilyTreeNodeData,
-          ariaLabel,
-          draggable: false,
-          focusable: false,
-          selectable: false,
-        });
+        const x = cursorX + memberIndex * (layout.nodeWidth + layout.coupleGap);
+        positions.set(person.id, { id: getPersonNodeId(person.id), row: rowIndex, x });
       });
-
-      if (cluster.members.length === 2) {
-        const [leftPerson, rightPerson] = cluster.members;
-        const partnerKey = getPartnerKey(leftPerson.id, rightPerson.id);
-        const junctionId = `family-union-${encodeURIComponent(partnerKey)}`;
-        const junctionX =
-          cursorX + layout.nodeWidth + layout.coupleGap / 2;
-        const junctionY = y + layout.nodeHeight / 2;
-
-        const union = {
-          id: junctionId,
-          leftId: leftPerson.id,
-          rightId: rightPerson.id,
-        };
-        unionsByPartnerKey.set(partnerKey, union);
-        unionsByPersonId.set(leftPerson.id, union);
-        unionsByPersonId.set(rightPerson.id, union);
-        nodes.push({
-          id: junctionId,
-          type: "familyJunction",
-          position: { x: junctionX, y: junctionY },
-          ...junctionSize,
-          measured: junctionSize,
-          handles: junctionHandles,
-          data: {} satisfies FamilyJunctionNodeData,
-          draggable: false,
-          focusable: false,
-          selectable: false,
-          connectable: false,
-        });
-      }
-
       cursorX += getClusterWidth(cluster, layout) + layout.familyGap;
-    });
+    }
   });
+
+  const routes = buildFamilyRoutes(people, positions, layout, rows.length);
+  const nodes: Node[] = [];
+  const positionById = new Map<string, DiagramPersonPosition>();
+  const peopleById = new Map(people.map((person) => [person.id, person]));
+  const measured = { width: layout.nodeWidth, height: layout.nodeHeight };
+  const handles = makeHandles(layout.nodeWidth, layout.nodeHeight);
+
+  for (const [id, position] of positions) {
+    const person = peopleById.get(id)!;
+    const x = position.x;
+    const y = routes.rowOffsets[position.row];
+    const ariaLabel = buildPersonAriaLabel(person);
+    positionById.set(id, { id: position.id, x, y });
+    nodes.push({
+      id: position.id,
+      type: "familyTree",
+      position: { x, y },
+      ...measured,
+      measured,
+      handles,
+      data: {
+        ariaLabel,
+        birthPlace: person.birthPlace,
+        compact: layout.compact,
+        displayLabel: getLegalName(person),
+        label: getPersonDisplayName(person),
+        personId: person.id,
+        photo: parseMediaAssetReference(person.photo) ? null : person.photo,
+        profession: person.profession,
+        secondaryLabel: getLifeSpanLabel(person).replace(" - ", "–"),
+        sex: person.sex,
+      } satisfies FamilyTreeNodeData,
+      ariaLabel,
+      draggable: false,
+      focusable: false,
+      selectable: false,
+    });
+  }
+  for (const node of routes.nodes) {
+    nodes.push(node);
+  }
 
   return {
     bounds: {
-      x: 0,
+      x: routes.leftBound,
       y: 0,
-      width: graphWidth,
-      height: (rows.length - 1) * layout.generationGap + layout.nodeHeight,
+      width: Math.max(graphWidth, routes.rightBound) - routes.leftBound,
+      height: routes.bottom,
     },
-    generations,
+    edges: routes.edges,
     nodes,
     positionById,
-    unionsByPartnerKey,
-    unionsByPersonId,
+    totalGenerations: rows.length,
   };
-}
-
-function buildTreeEdges(
-  people: PersonRecord[],
-  positionById: Map<string, DiagramPersonPosition>,
-  unionsByPartnerKey: Map<string, PartnerUnion>,
-  unionsByPersonId: Map<string, PartnerUnion>,
-): Edge[] {
-  const peopleById = new Map(people.map((person) => [person.id, person]));
-  const partnerEdgeIds = new Set<string>();
-  const edges: Edge[] = [];
-  const partnerStyle = {
-    stroke: "#c8791a",
-    strokeDasharray: "8 7",
-    strokeLinecap: "butt" as const,
-    strokeWidth: 2.4,
-  };
-  const parentStyle = {
-    stroke: "#17452d",
-    strokeLinecap: "round" as const,
-    strokeWidth: 2.2,
-  };
-
-  for (const person of people) {
-    for (const partnerId of person.partnerIds) {
-      if (!peopleById.has(partnerId)) {
-        continue;
-      }
-
-      const partnerKey = getPartnerKey(person.id, partnerId);
-      if (partnerEdgeIds.has(partnerKey)) {
-        continue;
-      }
-
-      partnerEdgeIds.add(partnerKey);
-      const sourcePosition = positionById.get(person.id);
-      const targetPosition = positionById.get(partnerId);
-
-      if (!sourcePosition || !targetPosition) {
-        continue;
-      }
-
-      const leftFirst = sourcePosition.x <= targetPosition.x;
-      const [leftId, rightId] = leftFirst ? [person.id, partnerId] : [partnerId, person.id];
-      const [leftNode, rightNode] = leftFirst
-        ? [sourcePosition.id, targetPosition.id]
-        : [targetPosition.id, sourcePosition.id];
-      const union = unionsByPartnerKey.get(partnerKey);
-      const leftName = getLegalName(peopleById.get(leftId) as PersonRecord);
-      const rightName = getLegalName(peopleById.get(rightId) as PersonRecord);
-      const edgeId = `partner-${encodeURIComponent(partnerKey)}`;
-
-      if (union) {
-        edges.push(
-          {
-            id: `${edgeId}-left`,
-            source: leftNode,
-            target: union.id,
-            sourceHandle: "right",
-            targetHandle: "left",
-            type: "straight",
-            style: partnerStyle,
-            ariaLabel: `Relazione di coppia tra ${leftName} e ${rightName}`,
-            focusable: false,
-          },
-          {
-            id: `${edgeId}-right`,
-            source: union.id,
-            target: rightNode,
-            sourceHandle: "right",
-            targetHandle: "left",
-            type: "straight",
-            style: partnerStyle,
-            ariaLabel: `Relazione di coppia tra ${leftName} e ${rightName}`,
-            focusable: false,
-          },
-        );
-      } else {
-        edges.push({
-          id: edgeId,
-          source: leftNode,
-          target: rightNode,
-          sourceHandle: "right",
-          targetHandle: "left",
-          type: sourcePosition.y === targetPosition.y ? "straight" : "smoothstep",
-          style: partnerStyle,
-          ariaLabel: `Relazione di coppia tra ${leftName} e ${rightName}`,
-          focusable: false,
-        });
-      }
-    }
-  }
-
-  for (const child of people) {
-    const validParentIds = child.parentIds.filter((parentId) => peopleById.has(parentId));
-    let representedParentIds = new Set<string>();
-    const parentIds = new Set(validParentIds);
-    let familyUnion: PartnerUnion | undefined;
-    for (const parentId of validParentIds) {
-      const union = unionsByPersonId.get(parentId);
-      if (union && parentIds.has(union.leftId) && parentIds.has(union.rightId)) {
-        familyUnion = union;
-        break;
-      }
-    }
-
-    if (familyUnion) {
-      const parentNames = [familyUnion.leftId, familyUnion.rightId]
-        .map((parentId) => peopleById.get(parentId))
-        .filter((parent): parent is PersonRecord => Boolean(parent))
-        .map(getLegalName);
-
-      representedParentIds = new Set([familyUnion.leftId, familyUnion.rightId]);
-      edges.push({
-        id: `parent-union-${encodeURIComponent(JSON.stringify([familyUnion.id, child.id]))}`,
-        source: familyUnion.id,
-        target: positionById.get(child.id)!.id,
-        sourceHandle: "bottom",
-        targetHandle: "top",
-        type: "smoothstep",
-        style: parentStyle,
-        ariaLabel: `Relazione genitore-figlio da ${parentNames.join(" e ")} a ${getLegalName(child)}`,
-        focusable: false,
-      });
-    }
-
-    for (const parentId of validParentIds) {
-      if (representedParentIds.has(parentId)) {
-        continue;
-      }
-
-      const parent = peopleById.get(parentId);
-      if (!parent) {
-        continue;
-      }
-
-      edges.push({
-        id: `parent-${encodeURIComponent(JSON.stringify([parentId, child.id]))}`,
-        source: positionById.get(parentId)!.id,
-        target: positionById.get(child.id)!.id,
-        sourceHandle: "bottom",
-        targetHandle: "top",
-        type: "smoothstep",
-        style: parentStyle,
-        ariaLabel: `Relazione genitore-figlio da ${getLegalName(parent)} a ${getLegalName(child)}`,
-        focusable: false,
-      });
-    }
-  }
-
-  return edges;
 }
 
 export function TreeDiagramView({
@@ -508,25 +315,12 @@ export function TreeDiagramView({
   const layout = isCompactLayout ? COMPACT_LAYOUT : WIDE_LAYOUT;
   const canvasRef = useRef<HTMLDivElement>(null);
   const [flowInstance, setFlowInstance] = useState<ReactFlowInstance | null>(null);
-
-  const { bounds, edges, nodes, positionById, totalGenerations } = useMemo(() => {
-    const {
-      bounds,
-      generations,
-      nodes,
-      positionById,
-      unionsByPartnerKey,
-      unionsByPersonId,
-    } = buildTreeNodes(people, layout);
-
-    return {
-      bounds,
-      nodes,
-      positionById,
-      edges: buildTreeEdges(people, positionById, unionsByPartnerKey, unionsByPersonId),
-      totalGenerations: new Set(generations.values()).size,
-    };
-  }, [layout, people]);
+  const [activeBranchId, setActiveBranchId] = useState<string | null>(null);
+  const [focusedBranchId, setFocusedBranchId] = useState<string | null>(null);
+  const { bounds, edges, nodes, positionById, totalGenerations } = useMemo(
+    () => buildTreeDiagram(people, layout),
+    [layout, people],
+  );
 
   const normalizedQuery = query.trim().toLowerCase();
   const highlightedIds = useMemo(
@@ -535,9 +329,15 @@ export function TreeDiagramView({
       : EMPTY_IDS,
     [normalizedQuery, people],
   );
+  const onSelectBranch = useCallback((branchId: string) => {
+    setActiveBranchId((current) => current === branchId ? null : branchId);
+  }, []);
   const interaction = useMemo(
-    () => ({ highlightedIds, onSelectPerson, photoUrls, selectedPersonId }),
-    [highlightedIds, onSelectPerson, photoUrls, selectedPersonId],
+    () => ({
+      activeBranchId, highlightedBranchId: focusedBranchId ?? activeBranchId, highlightedIds,
+      onFocusBranch: setFocusedBranchId, onSelectBranch, onSelectPerson, photoUrls, selectedPersonId,
+    }),
+    [activeBranchId, focusedBranchId, highlightedIds, onSelectBranch, onSelectPerson, photoUrls, selectedPersonId],
   );
   const handleSelectNode = useCallback((_: unknown, node: Node) => {
     if (node.type === "familyTree") {
@@ -642,7 +442,7 @@ export function TreeDiagramView({
             aria-label="Albero genealogico. Usa i controlli per adattare, ingrandire o ridurre la vista."
             ariaLabelConfig={ARIA_LABELS}
             colorMode="light"
-            defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
+          edgeTypes={familyEdgeTypes}
             edges={edges}
             edgesFocusable={false}
             elementsSelectable={false}
@@ -666,9 +466,9 @@ export function TreeDiagramView({
               className="!right-3 !bottom-3 !m-0 !h-20 !w-28 !rounded-xl !border !border-[#ccd5cc] !bg-white/95 !shadow-[0_8px_24px_rgba(20,53,36,0.1)] sm:!h-28 sm:!w-44"
               maskColor="rgba(23, 69, 45, 0.09)"
               nodeBorderRadius={8}
-              nodeColor={(node) => (node.type === "familyJunction" ? "transparent" : "#7fa08a")}
+            nodeColor={(node) => (node.type === "familyTree" ? "#7fa08a" : "transparent")}
               nodeStrokeColor={(node) =>
-                node.type === "familyJunction" ? "transparent" : "#17452d"
+              node.type === "familyTree" ? "#17452d" : "transparent"
               }
               nodeStrokeWidth={1.5}
               pannable

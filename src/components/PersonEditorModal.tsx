@@ -5,8 +5,8 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 
 import { useDialogFocus } from "@/hooks/useDialogFocus";
 import { DEFAULT_ALLOWED_MEDIA_MIME_TYPES } from "@/models/MediaAsset";
-import type { PersonRecord, PersonSex } from "@/models/Person";
-import { getPersonDisplayName, getPersonShortName } from "@/utils/familyTree";
+import { PERSON_SEX_LABELS, type PersonRecord, type PersonSex } from "@/models/Person";
+import { getBiologicalParentIds, getPersonDisplayName, getPersonShortName } from "@/utils/familyTree";
 
 export type PersonMediaKind = "image" | "audio" | "video" | "pdf" | "file";
 
@@ -77,11 +77,13 @@ function formatCommaSeparated(values: string[] | null): string {
 
 function RelationDropdown({
   label,
+  maxSelections,
   people,
   selectedIds,
   onChange,
 }: {
   label: string;
+  maxSelections?: number;
   people: PersonRecord[];
   selectedIds: string[];
   onChange: (nextIds: string[]) => void;
@@ -161,7 +163,7 @@ function RelationDropdown({
         >
           <span className="truncate">{selectedPeopleLabel}</span>
           <span className="ml-4 text-xs uppercase tracking-[0.18em] text-slate-500">
-            {selectedIds.length}
+            {maxSelections === undefined ? selectedIds.length : `${selectedIds.length}/${maxSelections}`}
           </span>
         </button>
 
@@ -185,6 +187,11 @@ function RelationDropdown({
                     <input
                       checked={selectedIds.includes(person.id)}
                       className="h-4 w-4 rounded border-[#c7b79b] text-[#153524]"
+                      disabled={
+                        maxSelections !== undefined &&
+                        selectedIds.length >= maxSelections &&
+                        !selectedIds.includes(person.id)
+                      }
                       onChange={(event) =>
                         onChange(toggleId(selectedIds, person.id, event.target.checked))
                       }
@@ -299,6 +306,33 @@ export function PersonEditorModal({
       ...currentDraft,
       [key]: value,
     }));
+  };
+
+  const biologicalIds = getBiologicalParentIds(draft);
+  const adoptiveIds = draft.parentIds.filter((id) => !biologicalIds.includes(id));
+  const diagramIds = draft.diagramParentIds ?? [];
+  const setParents = (role: "biological" | "adoptive", selected: string[]) => {
+    const nextBiological = role === "biological"
+      ? selected
+      : biologicalIds.filter((id) => !selected.includes(id));
+    const nextAdoptive = role === "adoptive"
+      ? selected
+      : adoptiveIds.filter((id) => !selected.includes(id));
+    const parentIds = draft.parentIds.filter(
+      (id) => nextBiological.includes(id) || nextAdoptive.includes(id),
+    );
+    const retainedIds = new Set(parentIds);
+    for (const id of [...nextBiological, ...nextAdoptive]) {
+      if (!retainedIds.has(id)) parentIds.push(id);
+    }
+    setDraft({
+      ...draft,
+      parentIds,
+      biologicalParentIds: nextBiological,
+      diagramParentIds: parentIds.length > 2
+        ? diagramIds.filter((id) => parentIds.includes(id))
+        : undefined,
+    });
   };
 
   const currentPhotoUrl = photoFile
@@ -511,10 +545,9 @@ export function PersonEditorModal({
                   value={draft.sex ?? ""}
                 >
                   <option value="">Non indicato</option>
-                  <option value="female">Female</option>
-                  <option value="male">Male</option>
-                  <option value="nonbinary">Nonbinary</option>
-                  <option value="unknown">Unknown</option>
+                  {Object.entries(PERSON_SEX_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
                 </select>
               </label>
               <label className="space-y-2">
@@ -573,12 +606,38 @@ export function PersonEditorModal({
           <section className="rounded-[18px] border border-[#dfe5df] bg-white px-5 py-5">
             <p className="text-xs uppercase tracking-[0.24em] text-slate-500">Relazioni</p>
             <div className="mt-4 space-y-4">
+              {draft.parentIds.length > 2 && draft.biologicalParentIds === undefined ? (
+                <p className="text-sm text-[#526158]">
+                  I tipi di genitore sono proposti in base all’ordine del vecchio archivio. Verificali prima di salvare.
+                </p>
+              ) : null}
               <RelationDropdown
-                label="Genitori"
-                onChange={(nextIds) => updateDraft("parentIds", nextIds)}
+                label="Genitori biologici"
+                maxSelections={2}
+                onChange={(nextIds) => setParents("biological", nextIds)}
                 people={availableRelations}
-                selectedIds={draft.parentIds}
+                selectedIds={biologicalIds}
               />
+              <RelationDropdown
+                label="Genitori adottivi"
+                onChange={(nextIds) => setParents("adoptive", nextIds)}
+                people={availableRelations}
+                selectedIds={adoptiveIds}
+              />
+              {draft.parentIds.length > 2 ? (
+                <div className="space-y-2">
+                  <RelationDropdown
+                    label="Genitori nel diagramma"
+                    maxSelections={2}
+                    onChange={(nextIds) => updateDraft("diagramParentIds", nextIds)}
+                    people={availableRelations.filter(({ id }) => draft.parentIds.includes(id))}
+                    selectedIds={diagramIds}
+                  />
+                  <p className="text-sm text-[#526158]">
+                    Seleziona due genitori per mostrare la discendenza nel diagramma.
+                  </p>
+                </div>
+              ) : null}
               <RelationDropdown
                 label="Partner"
                 onChange={(nextIds) => updateDraft("partnerIds", nextIds)}
@@ -690,7 +749,7 @@ export function PersonEditorModal({
               </div>
               <label className="space-y-2">
                 <span className="text-xs uppercase tracking-[0.18em] text-slate-500">
-                  Tags separati da virgola
+                  Etichette separate da virgola
                 </span>
                 <input
                   className={fieldClassName}

@@ -85,6 +85,18 @@ Se il browser rifiuta la scrittura, l’ultima versione salvata rimane disponibi
 al ricaricamento. L’app segnala le modifiche conservate solo in sessione, che
 possono essere salvate esportando un file `.albero`.
 
+## Genitori e Diagramma
+
+La scheda distingue genitori biologici, fino a due, e genitori adottivi. Con
+uno o due genitori registrati il Diagramma li mostra automaticamente. Con più
+genitori, scegli i due da mostrare nella scheda di modifica. Il controllo di
+coerenza segnala le schede con una scelta ancora incompleta.
+
+Per gli archivi precedenti alla distinzione, l’app propone come biologici i
+primi due genitori nell’ordine salvato. Verifica questa classificazione nelle
+schede dove il tipo di legame è rilevante. Il formato `.albero` conserva
+entrambe le scelte quando sono state registrate.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

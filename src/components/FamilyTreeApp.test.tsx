@@ -11,11 +11,11 @@ vi.mock("@xyflow/react", async () => {
       onNodeClick,
     }: {
       children?: React.ReactNode;
-      nodes?: Array<{ id: string; data?: { label?: string } }>;
+      nodes?: Array<{ id: string; type?: string; data?: { label?: string } }>;
       onNodeClick?: (_event: unknown, node: { id: string }) => void;
     }) => (
       <div data-testid="react-flow">
-        {nodes.map((node) => (
+        {nodes.filter(({ type }) => type === "familyTree").map((node) => (
           <button
             key={node.id}
             onClick={() => onNodeClick?.({}, node)}
@@ -53,11 +53,6 @@ describe("FamilyTreeApp", () => {
   let database: ReturnType<typeof mockArchiveDB>;
   beforeEach(() => {
     database = mockArchiveDB();
-    vi.mocked(window.matchMedia).mockImplementation((query) => ({
-      matches: false, media: query, onchange: null,
-      addEventListener() {}, removeEventListener() {},
-      addListener() {}, removeListener() {}, dispatchEvent: () => true,
-    }));
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response(new Uint8Array([0]), { status: 200 })),
@@ -89,12 +84,26 @@ describe("FamilyTreeApp", () => {
 
     expect(database.snapshot?.metadata.familyName).toBe("Bianchi");
     expect(database.snapshot?.metadata.title).toBe("Archivio della famiglia Bianchi");
-    expect(database.snapshot?.people).toEqual([]);
+    const people = database.snapshot!.people;
+    expect(people).toHaveLength(3);
+    const giuseppe = people.find(({ name }) => name === "Giuseppe")!;
+    const maria = people.find(({ name }) => name === "Maria")!;
+    const leonardo = people.find(({ name }) => name === "Leonardo")!;
+    expect(giuseppe).toMatchObject({
+      name: "Giuseppe", surname: "Rossi", partnerIds: [maria.id], childIds: [leonardo.id],
+    });
+    expect(maria).toMatchObject({
+      name: "Maria", surname: "Bianchi", partnerIds: [giuseppe.id], childIds: [leonardo.id],
+    });
+    expect(leonardo).toMatchObject({
+      name: "Leonardo", surname: "Rossi", parentIds: [giuseppe.id, maria.id],
+    });
 
     unmount();
     render(<FamilyTreeApp mode="admin" />);
 
     expect(await screen.findByText("Archivio Bianchi")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Leonardo Rossi" })).toBeInTheDocument();
     expect(
       screen.queryByRole("heading", {
         name: "Crea il tuo archivio di famiglia",
@@ -124,6 +133,38 @@ describe("FamilyTreeApp", () => {
         name: "Crea il tuo archivio di famiglia",
       }),
     ).not.toBeInTheDocument();
+  });
+
+  it("opens an affected person's card and resets toast dismissal on reload", async () => {
+    const user = userEvent.setup();
+    const isolated = {
+      ...seedFamilyTree.people[0],
+      name: "Isolata",
+      surname: "Prova",
+      knownAs: null,
+      parentIds: [],
+      childIds: [],
+      partnerIds: [],
+    };
+    window.localStorage.setItem(
+      FAMILY_TREE_STORAGE_KEY,
+      JSON.stringify({ ...seedFamilyTree, people: [isolated] }),
+    );
+    const { unmount } = render(<FamilyTreeApp mode="visitor" />);
+    const toast = await screen.findByRole("complementary", { name: "Avviso di coerenza" });
+    await user.click(within(toast).getByRole("button", { name: /Controlli di coerenza/ }));
+    const issues = screen.getByRole("dialog", { name: "Controlli di coerenza" });
+    expect(within(issues).getByRole("heading", { name: "Persone senza relazioni" })).toBeInTheDocument();
+    await user.click(within(issues).getByRole("button", { name: "Isolata Prova" }));
+    expect(screen.getByRole("dialog", { name: "Isolata Prova" })).toBeInTheDocument();
+    expect(issues).not.toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    await user.click(within(toast).getByRole("button", { name: "Nascondi avviso di coerenza" }));
+    expect(toast).not.toBeInTheDocument();
+    unmount();
+    render(<FamilyTreeApp mode="visitor" />);
+    expect(await screen.findByRole("complementary", { name: "Avviso di coerenza" })).toBeInTheDocument();
   });
 
   it("renders the seeded archive, opens person details, and switches views", async () => {
@@ -159,7 +200,7 @@ describe("FamilyTreeApp", () => {
       "true",
     );
 
-    await user.click(screen.getByRole("tab", { name: "Timeline" }));
+    await user.click(screen.getByRole("tab", { name: "Cronologia" }));
     expect(
       await screen.findByText(/Cronologia di nascite e decessi/i),
     ).toBeInTheDocument();
@@ -180,8 +221,8 @@ describe("FamilyTreeApp", () => {
     await user.type(screen.getByLabelText("Nome"), "Giulia");
     await user.type(screen.getByLabelText("Cognome"), "Verdi");
     await user.type(screen.getByLabelText("Luogo di nascita"), "Milano");
-    await user.click(screen.getByRole("button", { name: "Genitori" }));
-    await user.type(screen.getByLabelText("Cerca genitori"), "Nanni");
+    await user.click(screen.getByRole("button", { name: "Genitori biologici" }));
+    await user.type(screen.getByLabelText("Cerca genitori biologici"), "Nanni");
     await user.click(screen.getByRole("checkbox", { name: /Nanni/i }));
     await user.click(screen.getByRole("button", { name: "Crea persona" }));
 
@@ -343,7 +384,9 @@ describe("FamilyTreeApp", () => {
     await user.type(screen.getByLabelText("Nome"), "Amalia");
     database.commit.mockRejectedValueOnce(new DOMException("Interrotta", "AbortError"));
     await user.click(screen.getByRole("button", { name: "Crea persona" }));
-    await waitFor(() => expect(alert).toHaveBeenCalledWith(expect.stringContaining("Interrotta")));
+    await waitFor(() => expect(alert).toHaveBeenCalledWith(
+      expect.stringContaining("La scrittura è stata interrotta."),
+    ));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(database.snapshot?.people.some(({ name }) => name === "Amalia")).toBe(false);
   });

@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
 
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { BaseEdge, Handle, Position, type EdgeProps, type NodeProps } from "@xyflow/react";
 import { createContext, useContext } from "react";
 
 import { PersonGlyph } from "@/components/PersonGlyph";
@@ -21,13 +21,27 @@ export interface FamilyTreeNodeData extends Record<string, unknown> {
 }
 
 export const FamilyTreeNodeContext = createContext<{
+  activeBranchId?: string | null;
+  highlightedBranchId?: string | null;
   highlightedIds: ReadonlySet<string>;
+  onFocusBranch?: (branchId: string | null) => void;
+  onSelectBranch?: (branchId: string) => void;
   onSelectPerson: (personId: string) => void;
   photoUrls?: ReadonlyMap<string, string>;
   selectedPersonId: string | null;
 } | null>(null);
 
-export type FamilyJunctionNodeData = Record<string, never>;
+export interface FamilyJunctionNodeData extends Record<string, unknown> {
+  branchId: string;
+  color: string;
+  label: string;
+  title: string;
+}
+
+export interface FamilyRouteEdgeData extends Record<string, unknown> {
+  branchId: string;
+  path: string;
+}
 
 export interface FamilyTimelineNodeData extends Record<string, unknown> {
   label: string;
@@ -100,16 +114,16 @@ export function FamilyTreeNode({ data }: NodeProps) {
       <button
         aria-label={nodeData.ariaLabel}
         className={[
-          "nodrag nopan flex h-full w-full overflow-hidden rounded-xl border bg-white shadow-[0_6px_18px_rgba(20,53,36,0.08)]",
+          "nodrag nopan flex h-full w-full overflow-hidden rounded-xl border shadow-[0_6px_18px_rgba(20,53,36,0.08)]",
           nodeData.compact
             ? "flex-col items-center justify-center gap-1 px-1.5 py-1.5 text-center"
             : "items-center gap-3 px-3 py-2.5 text-left",
-          "transition-[border-color,box-shadow,background-color] hover:border-[#6d8d76] hover:bg-[#fdfefb] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[#17452d]/35 motion-reduce:transition-none",
+          "transition-[border-color,box-shadow,background-color] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[#17452d]/35 motion-reduce:transition-none",
           selected
             ? "border-2 border-[#17452d] bg-[#f1f6ef] shadow-[0_0_0_3px_rgba(23,69,45,0.18),0_8px_22px_rgba(20,53,36,0.1)]"
             : highlighted
-            ? "border-2 border-[#c8791a] bg-[#fffaf0] shadow-[0_0_0_3px_rgba(200,121,26,0.18),0_8px_22px_rgba(20,53,36,0.1)]"
-            : "border-[#315a40]",
+            ? "border-2 border-[#c8791a] bg-[#fff0d6] hover:bg-[#ffe8c0] shadow-[0_0_0_3px_rgba(200,121,26,0.18),0_8px_22px_rgba(20,53,36,0.1)]"
+            : "border-[#315a40] bg-white hover:border-[#6d8d76] hover:bg-[#fdfefb]",
         ].join(" ")}
         data-query-match={highlighted ? "true" : undefined}
         data-selected={selected ? "true" : undefined}
@@ -188,28 +202,56 @@ export function FamilyTreeNode({ data }: NodeProps) {
   );
 }
 
-export function FamilyJunctionNode() {
+export function FamilyJunctionNode({ data }: NodeProps) {
+  const branch = data as FamilyJunctionNodeData;
+  const interaction = useContext(FamilyTreeNodeContext);
+  const pressed = interaction?.activeBranchId === branch.branchId;
+  const highlighted = interaction?.highlightedBranchId === branch.branchId;
   return (
-    <span aria-hidden="true" className="block h-0.5 w-0.5">
-      <Handle
-        className="!h-px !w-px !border-0 !bg-transparent !opacity-0"
-        id="left"
-        position={Position.Left}
-        type="target"
-      />
-      <Handle
-        className="!h-px !w-px !border-0 !bg-transparent !opacity-0"
-        id="right"
-        position={Position.Right}
-        type="source"
-      />
-      <Handle
-        className="!h-px !w-px !border-0 !bg-transparent !opacity-0"
-        id="bottom"
-        position={Position.Bottom}
-        type="source"
-      />
-    </span>
+    <>
+      <FamilyVerticalHandles />
+      <button
+        aria-label={branch.title}
+        aria-pressed={pressed}
+        className="nodrag nopan flex h-full w-full items-center justify-center gap-1 rounded-md border bg-white px-1 text-[11px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-current"
+        data-family-branch={branch.branchId}
+        onBlur={() => interaction?.onFocusBranch?.(null)}
+        onClick={() => interaction?.onSelectBranch?.(branch.branchId)}
+        onFocus={() => interaction?.onFocusBranch?.(branch.branchId)}
+        style={{ color: branch.color, background: highlighted ? "#eef4ee" : undefined }}
+        title={branch.title}
+        type="button"
+      >
+        <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-current" />
+        <span className="truncate">{branch.label}</span>
+      </button>
+    </>
+  );
+}
+
+export function FamilyRouteEdge({ data, id, style }: EdgeProps) {
+  const interaction = useContext(FamilyTreeNodeContext);
+  const route = data as FamilyRouteEdgeData | undefined;
+  if (!route) {
+    return null;
+  }
+  const active = interaction?.highlightedBranchId === route.branchId;
+  return (
+    <BaseEdge
+      id={id}
+      interactionWidth={0}
+      path={route.path}
+      style={active ? { ...style, strokeWidth: 4 } : style}
+    />
+  );
+}
+
+function FamilyVerticalHandles() {
+  return (
+    <>
+      <Handle className="!h-px !w-px !border-0 !opacity-0" id="top" position={Position.Top} type="target" />
+      <Handle className="!h-px !w-px !border-0 !opacity-0" id="bottom" position={Position.Bottom} type="source" />
+    </>
   );
 }
 
@@ -250,7 +292,10 @@ export function FamilyTimelineNode({ data }: NodeProps) {
 }
 
 export const familyNodeTypes = {
+  familyFork: FamilyVerticalHandles,
   familyJunction: FamilyJunctionNode,
   familyTimeline: FamilyTimelineNode,
   familyTree: FamilyTreeNode,
 };
+
+export const familyEdgeTypes = { familyRoute: FamilyRouteEdge };

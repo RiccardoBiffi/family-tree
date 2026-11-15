@@ -23,6 +23,7 @@ interface TimelineViewProps {
 interface TimelineEntry {
   person: PersonRecord;
   birthYear: number;
+  deathYear: number | null;
   endYear: number;
   isLiving: boolean;
 }
@@ -85,12 +86,14 @@ function buildTimelineData(people: PersonRecord[]) {
       continue;
     }
 
-    const endYear = Math.max(extractYear(person.deathDate) ?? currentYear, birthYear);
+    const deathYear = extractYear(person.deathDate);
+    const endYear = Math.max(deathYear ?? currentYear, birthYear);
     const generation = generations.get(person.id) ?? 0;
     const generationEntries = groupedEntries.get(generation) ?? [];
     generationEntries.push({
       person,
       birthYear,
+      deathYear,
       endYear,
       isLiving: person.deathDate === null,
     });
@@ -132,7 +135,7 @@ function buildTimelineRows(
   };
 
   for (const group of groups) {
-    addRow({ kind: "generation", generation: group.generation }, compact ? 37 : 35);
+    addRow({ kind: "generation", generation: group.generation }, compact ? 32 : 30);
     for (const entry of group.entries) addRow({ kind: "person", entry }, compact ? 57 : 52);
   }
 
@@ -315,69 +318,34 @@ function TimelineBar({
     axisEndYear,
   );
   const spanPercentage = Math.max(endPosition - startPosition, 0);
-  const compactLabels = spanPercentage < 22;
-  const pinShortSpanToEnd = spanPercentage < 6 && endPosition > 94;
-  const endLabel = entry.isLiving ? "oggi" : entry.endYear;
 
   return (
-    <div className="relative h-14 min-w-0 overflow-hidden sm:h-[51px]">
+    <div aria-hidden="true" className="relative h-14 min-w-0 overflow-hidden sm:h-[51px]" data-timeline-track>
       <TimelineGrid
         axisEndYear={axisEndYear}
         axisStartYear={axisStartYear}
         markers={markers}
       />
       <span
-        aria-hidden="true"
         className={[
-          "absolute top-1/2 h-7 -translate-y-1/2 rounded-md",
+          "@container absolute top-1/2 h-7 -translate-y-1/2 overflow-hidden rounded-md",
           entry.isLiving ? "bg-[#4f765f]" : "bg-[#3b3d3c]",
           highlighted
             ? "outline-2 outline-offset-2 outline-[#173c2a]"
             : "",
         ].join(" ")}
+        data-timeline-bar
         style={{
-          left: pinShortSpanToEnd ? "auto" : `${startPosition}%`,
-          minWidth: pinShortSpanToEnd ? "80px" : "3px",
-          right: pinShortSpanToEnd ? `${100 - endPosition}%` : "auto",
-          width: pinShortSpanToEnd ? "80px" : `${spanPercentage}%`,
+          left: `min(${startPosition}%, calc(100% - 3px))`,
+          minWidth: "3px",
+          width: `${spanPercentage}%`,
         }}
       >
-        {!compactLabels || pinShortSpanToEnd ? (
-          <>
-            <span className="absolute inset-y-0 left-2 flex items-center text-[11px] font-semibold text-white sm:text-xs">
-              {entry.birthYear}
-            </span>
-            <span className="absolute inset-y-0 right-2 flex items-center text-[11px] font-semibold text-white sm:text-xs">
-              {endLabel}
-            </span>
-          </>
-        ) : null}
+        <span className="hidden h-full items-center justify-between gap-1 whitespace-nowrap px-2 text-[11px] font-semibold tabular-nums text-white @min-[5.5rem]:flex sm:text-xs">
+          <span data-timeline-birth>{entry.birthYear}</span>
+          {entry.deathYear !== null ? <span data-timeline-end>{entry.deathYear}</span> : null}
+        </span>
       </span>
-
-      {compactLabels && !pinShortSpanToEnd ? (
-        <>
-          <span
-            className="absolute top-1 text-[10px] font-semibold text-[#26342d] sm:text-[11px]"
-            style={{
-              left: `${startPosition}%`,
-              transform:
-                startPosition < 8 ? "none" : "translateX(calc(-100% - 6px))",
-            }}
-          >
-            {entry.birthYear}
-          </span>
-          <span
-            className="absolute bottom-1 text-[10px] font-semibold text-[#355e44] sm:text-[11px]"
-            style={{
-              left: `${endPosition}%`,
-              transform:
-                endPosition > 92 ? "translateX(-100%)" : "translateX(6px)",
-            }}
-          >
-            {endLabel}
-          </span>
-        </>
-      ) : null}
     </div>
   );
 }
@@ -403,8 +371,8 @@ function TimelineRowContent({
   const isDimmed = (personId: string) => Boolean(highlightIds && !highlightIds.has(personId));
   if (row.kind === "generation") {
     return (
-      <div className="grid grid-cols-[var(--timeline-name-column)_minmax(0,1fr)] border-b border-[#d7ddd8] bg-[#f4f7f4]" style={{ height }}>
-        <h3 className="sticky left-0 z-20 flex items-center border-r border-[#d7ddd8] bg-[#f4f7f4] px-3 text-xs font-semibold text-[#173c2a] sm:px-5 sm:text-sm">
+      <div className="grid grid-cols-[var(--timeline-name-column)_minmax(0,1fr)] border-b border-[#d7ddd8] bg-[#e8eee9]" style={{ height }}>
+        <h3 className="sticky left-0 z-20 flex items-center border-r border-[#d7ddd8] bg-[#e8eee9] px-3 text-xs leading-tight font-semibold text-[#173c2a] sm:px-5 sm:text-sm">
           {getGenerationLabel(row.generation)}
         </h3>
         <div aria-hidden="true" className="relative">
@@ -431,8 +399,10 @@ function TimelineRowContent({
       >
         {row.people.map((person, itemIndex) => {
           const displayName = getPersonDisplayName(person);
+          const deathYear = extractYear(person.deathDate);
           return (
             <button
+              aria-label={deathYear === null ? undefined : `${displayName}, decesso ${deathYear}`}
               className={[
                 "min-h-11 min-w-0 rounded-lg border bg-white px-2 text-sm font-medium text-[#26342d] outline-none transition-colors duration-150 hover:border-[#173c2a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#173c2a] motion-reduce:transition-none",
                 highlightIds?.has(person.id) ? "border-[#173c2a] bg-[#edf4ef]" : "border-[#d7ddd8]",
@@ -445,6 +415,9 @@ function TimelineRowContent({
               type="button"
             >
               <span className="block truncate">{displayName}</span>
+              {deathYear !== null ? (
+                <span className="block text-[10px] text-[#66736b]">Decesso {deathYear}</span>
+              ) : null}
             </button>
           );
         })}
@@ -456,12 +429,13 @@ function TimelineRowContent({
   const { person } = entry;
   const highlighted = highlightIds?.has(person.id) ?? false;
   const displayName = getLegalName(person);
-  const endLabel = entry.isLiving ? "oggi" : entry.endYear;
+  const lifespan = entry.deathYear === null ? String(entry.birthYear) : `${entry.birthYear} – ${entry.deathYear}`;
+  const deathLabel = person.deathDate ? `, decesso ${formatDateLabel(person.deathDate)}` : "";
   const rowBackground = highlighted ? "bg-[#edf4ef]" : "bg-white";
 
   return (
     <button
-      aria-label={`Apri la scheda di ${displayName}, ${formatDateLabel(person.birthDate)} - ${person.deathDate ? formatDateLabel(person.deathDate) : "oggi"}`}
+      aria-label={`Apri la scheda di ${displayName}, ${formatDateLabel(person.birthDate)}${deathLabel}`}
       className={[
         "group grid w-full grid-cols-[var(--timeline-name-column)_minmax(0,1fr)] text-left outline-none transition-colors duration-150 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#173c2a] motion-reduce:transition-none",
         rowBackground,
@@ -470,7 +444,7 @@ function TimelineRowContent({
       data-virtual-row={index}
       onClick={() => onSelectPerson(person.id)}
       style={{ height }}
-      title={`${displayName}: ${entry.birthYear} - ${endLabel}`}
+      title={`${displayName}: ${lifespan}`}
       type="button"
     >
       <span
@@ -489,8 +463,8 @@ function TimelineRowContent({
           <span className="line-clamp-2 text-[11px] font-semibold leading-3 text-[#202723] sm:block sm:truncate sm:text-sm sm:leading-normal">
             {displayName}
           </span>
-          <span className="mt-0.5 block text-[10px] text-[#66736b] sm:text-xs">
-            {entry.birthYear}
+          <span className="mt-0.5 block whitespace-nowrap text-[10px] text-[#66736b] sm:text-xs" data-timeline-lifespan>
+            {lifespan}
           </span>
           {highlighted ? <span className="sr-only">Corrispondenza della ricerca.</span> : null}
         </span>
@@ -613,7 +587,7 @@ export function TimelineView({
 
       <div
         aria-describedby={descriptionId}
-        aria-label={`Timeline familiare, intervallo ${minYear} - ${rangeEndLabel}`}
+        aria-label={`Cronologia familiare, intervallo ${minYear} - ${rangeEndLabel}`}
         className="relative min-h-0 flex-1 overflow-auto overscroll-contain bg-white outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#173c2a] [overflow-anchor:none] [scrollbar-gutter:stable]"
         onBlurCapture={onRowBlur}
         onFocusCapture={onRowFocus}
@@ -666,7 +640,7 @@ export function TimelineView({
             <div aria-hidden="true" style={{ height: totalHeight - offsets[(visibleRows.at(-1) ?? -1) + 1] }} />
           ) : (
             <div className="flex min-h-40 items-center justify-center px-5 text-center text-sm text-[#66736b]">
-              Nessuna persona disponibile nella timeline.
+              Nessuna persona disponibile nella cronologia.
             </div>
           )}
         </div>
@@ -684,12 +658,12 @@ export function TimelineView({
         </button>
 
         <div
-          aria-label="Controlli zoom timeline"
+          aria-label="Controlli zoom cronologia"
           className="flex min-h-11 items-stretch overflow-hidden rounded-lg border border-[#cfd7d2] bg-white"
           role="group"
         >
           <button
-            aria-label="Riduci zoom timeline"
+            aria-label="Riduci zoom cronologia"
             className="min-h-11 min-w-11 border-r border-[#cfd7d2] px-2 text-xs font-semibold text-[#173c2a] outline-none transition-colors duration-150 hover:bg-[#edf4ef] focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#173c2a] disabled:cursor-not-allowed disabled:opacity-35 motion-reduce:transition-none sm:min-w-12 sm:px-3 sm:text-sm"
             disabled={zoomIndex <= 0}
             onClick={() =>
@@ -711,7 +685,7 @@ export function TimelineView({
             </span>
           </span>
           <button
-            aria-label="Aumenta zoom timeline"
+            aria-label="Aumenta zoom cronologia"
             className="min-h-11 min-w-11 border-l border-[#cfd7d2] px-2 text-xs font-semibold text-[#173c2a] outline-none transition-colors duration-150 hover:bg-[#edf4ef] focus-visible:z-10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[#173c2a] disabled:cursor-not-allowed disabled:opacity-35 motion-reduce:transition-none sm:min-w-12 sm:px-3 sm:text-sm"
             disabled={zoomIndex >= ZOOM_LEVELS.length - 1}
             onClick={() =>

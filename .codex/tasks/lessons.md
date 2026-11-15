@@ -17,3 +17,6 @@
 - Model permissions by capability, not by a single mode gate: a visitor can remain unable to create, edit, or delete people while still being explicitly allowed to import and export the whole archive.
 - Treat multimedia as user-owned input: never seed or bundle example media in `dist-offline`; keep uploaded and imported blobs in IndexedDB and verify the release contains zero multimedia artifacts.
 - When `npm run build` intentionally owns a non-Next release target, commit a Vercel-specific `buildCommand` for `next build` and verify `.next/routes-manifest.json` exists before deployment.
+
+- For responsive timeline labels, preserve dates and measure available space in pixels at the annotated viewport, then check the same behavior after resizing and zooming. A fixed percentage does not determine whether text fits.
+- Un toast richiesto sopra al contenuto non deve cambiare le dimensioni della vista quando appare o viene chiuso. Nella Cronologia mostrare la data di decesso solo se registrata.

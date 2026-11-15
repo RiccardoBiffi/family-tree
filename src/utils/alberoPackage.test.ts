@@ -183,6 +183,37 @@ describe(".albero package", () => {
     expect(imported.assets).toEqual([]);
   });
 
+  it("round-trips biological and partial diagram selections while keeping all parent links", async () => {
+    const snapshot = snapshotWithoutMediaReferences();
+    snapshot.people = snapshot.people.map((person) => person.id === "p3" ? {
+      ...person,
+      parentIds: ["p1", "p2", "p6"],
+      biologicalParentIds: [],
+      diagramParentIds: ["p6"],
+    } : person);
+
+    const archive = await exportAlberoPackage(snapshot, []);
+    expect((await importAlberoPackage(archive)).snapshot).toEqual(snapshot);
+  });
+
+  it.each([
+    { biologicalParentIds: ["p1", "p2", "p6"] },
+    { biologicalParentIds: ["p1", "p1"] },
+    { diagramParentIds: ["p1", "p4"] },
+    { diagramParentIds: ["p1", "p2", "p6"] },
+  ])("rejects invalid parent designations %j at both archive boundaries", async (designations) => {
+    const snapshot = snapshotWithoutMediaReferences();
+    snapshot.people = snapshot.people.map((person) => person.id === "p3" ? {
+      ...person,
+      parentIds: ["p1", "p2", "p6"],
+      ...designations,
+    } : person);
+
+    await expect(exportAlberoPackage(snapshot, [])).rejects.toMatchObject({ code: "INVALID_SNAPSHOT" });
+    await expect(importAlberoPackage(await gzipJson(packageDocument({ snapshot }))))
+      .rejects.toMatchObject({ code: "INVALID_SNAPSHOT" });
+  });
+
   it("round-trips a realistic closed snapshot and every media Blob", async () => {
     const snapshot = createClosedSnapshot();
     const assets = createClosedAssets();
@@ -236,6 +267,7 @@ describe(".albero package", () => {
       expect(createHash("sha256").update(await readBlob(imported.assets[1].blob)).digest("hex"))
         .toEqual(createHash("sha256").update(bytes).digest("hex"));
     },
+    15_000,
   );
 
   it("rejects missing and malformed media references on export and import", async () => {

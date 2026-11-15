@@ -66,7 +66,11 @@ try {
       `${viewport.label}: visitor exposed person creation.`,
     );
 
-    for (const viewName of ["Diagramma", "Tabella", "Timeline"]) {
+    for (const name of ["Giuseppe Rossi", "Maria Bianchi", "Leonardo Rossi"]) {
+      await page.getByRole("button", { name: new RegExp("^" + name + ",") }).waitFor();
+    }
+
+    for (const viewName of ["Diagramma", "Tabella", "Cronologia"]) {
       await page.getByRole("tab", { exact: true, name: viewName }).click();
     }
 

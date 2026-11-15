@@ -6,6 +6,7 @@ import {
   computeGenerationMap,
   formatDateLabel,
   getPartnerComponents,
+  getFamilyTreeIssues,
   validateFamilyTree,
 } from "@/utils/familyTree";
 
@@ -68,5 +69,30 @@ describe("family tree generations", () => {
   it("formats calendar dates consistently even when a date string is invalid", () => {
     expect(formatDateLabel("2000-01-01")).toBe("01 gen 2000");
     expect(formatDateLabel("invalid")).toBe("Data sconosciuta");
+  });
+});
+
+describe("family tree coherence", () => {
+  it("associates each failed criterion with its exact people", () => {
+    const snapshot = {
+      version: 1,
+      metadata: { title: "", familyName: "", description: "", updatedAt: "" },
+      people: [
+        person("descendant", ["a"]),
+        person("a", ["b"]),
+        person("b", ["a"]),
+        person("too-many", ["descendant", "a", "b"]),
+        person("isolated"),
+      ],
+    };
+
+    expect(getFamilyTreeIssues(snapshot).map(({ id, personIds }) => ({ id, personIds })))
+      .toEqual([
+        { id: "ancestry-cycle", personIds: ["a", "b"] },
+        { id: "diagram-parents", personIds: ["too-many"] },
+        { id: "isolated", personIds: ["isolated"] },
+      ]);
+    expect(getFamilyTreeIssues({ ...snapshot, people: [] }))
+      .toEqual([expect.objectContaining({ id: "empty", personIds: [] })]);
   });
 });

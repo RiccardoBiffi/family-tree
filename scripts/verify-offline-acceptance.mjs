@@ -188,9 +188,9 @@ async function createChildWithParent(page) {
   await editor.getByRole("textbox", { exact: true, name: "Nome" }).fill("Grace");
   await editor.getByRole("textbox", { exact: true, name: "Cognome" }).fill("Archivio");
   await editor.getByLabel("Data di nascita").fill("2012-03-04");
-  await editor.getByRole("button", { name: "Genitori" }).click();
+  await editor.getByRole("button", { name: "Genitori biologici", exact: true }).click();
   await editor.getByLabel(personName).check();
-  await editor.getByRole("button", { name: "Genitori" }).click();
+  await editor.getByRole("button", { name: "Genitori biologici", exact: true }).click();
   await editor.getByRole("button", { name: "Crea persona" }).click();
 
   const details = page.getByRole("dialog", { name: childName });
@@ -284,7 +284,7 @@ async function runDurableDesktopFlow(browser) {
       "A fresh archive must start with zero IndexedDB media records.",
     );
 
-    for (const viewName of ["Diagramma", "Tabella", "Timeline"]) {
+    for (const viewName of ["Diagramma", "Tabella", "Cronologia"]) {
       await page.getByRole("tab", { exact: true, name: viewName }).click();
     }
 
@@ -365,7 +365,7 @@ async function runMobileFlow(browser) {
     await initializeArchive(page);
     await assertVisitor(page, "mobile default");
 
-    for (const viewName of ["Diagramma", "Tabella", "Timeline"]) {
+    for (const viewName of ["Diagramma", "Tabella", "Cronologia"]) {
       await page.getByRole("tab", { exact: true, name: viewName }).click();
       await assertNoPageOverflow(page, `mobile ${viewName}`);
     }
@@ -497,9 +497,17 @@ async function runVolatileRecoveryFlow(browser, archiveBytes) {
   const assertCleanRuntime = observeRuntime(page, "volatile recovery");
 
   try {
-    await initializeArchive(page, "Ricezione");
     await page.goto(`${artifactUrl}?admin`);
-    await importArchive(page, {
+    await page.getByRole("button", { name: "Importa archivio .albero" }).waitFor();
+    const fileInput = page.getByLabel("Seleziona archivio da importare");
+    await fileInput.setInputFiles({
+      buffer: Buffer.from("file non valido"),
+      mimeType: "application/octet-stream",
+      name: "non-valido.albero",
+    });
+    await page.getByRole("status").filter({ hasText: "Importazione non riuscita" }).waitFor();
+    await page.getByRole("heading", { name: "Crea il tuo archivio di famiglia" }).waitFor();
+    await fileInput.setInputFiles({
       buffer: archiveBytes,
       mimeType: "application/vnd.family-tree.albero",
       name: "recupero-volatile.albero",
@@ -771,7 +779,7 @@ async function runLargeArchiveFlow(browser) {
     await page.getByRole("dialog", { name: "Persona 09999" }).waitFor();
     await page.keyboard.press("Escape");
     assert((await page.locator("[data-virtual-row]").count()) < 100, "Table mounted too many rows.");
-    await page.getByRole("tab", { name: "Timeline", exact: true }).click();
+    await page.getByRole("tab", { name: "Cronologia", exact: true }).click();
     await page.getByRole("heading", { name: "Data di nascita non disponibile" }).waitFor();
     await page.getByRole("button", { name: "Persona 00000", exact: true }).focus();
     await page.keyboard.press("End");

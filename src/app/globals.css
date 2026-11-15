@@ -163,7 +163,8 @@ textarea {
   font-size: 0.8125rem;
 }
 
-.archive-onboarding__form button {
+.archive-onboarding__form button,
+.archive-onboarding__import button {
   min-height: 52px;
   margin-top: 20px;
   border: 1px solid #0c3b24;
@@ -181,9 +182,35 @@ textarea {
   background: #164b30;
 }
 
-.archive-onboarding__form button:focus-visible {
+.archive-onboarding__form button:focus-visible,
+.archive-onboarding__import button:focus-visible {
   outline: 3px solid rgb(12 59 36 / 30%);
   outline-offset: 3px;
+}
+
+.archive-onboarding__import {
+  margin-top: 24px;
+  border-top: 1px solid #d8d5c9;
+  padding-top: 20px;
+  color: #46544b;
+  font-size: 0.875rem;
+}
+
+.archive-onboarding__import button {
+  width: 100%;
+  margin-top: 10px;
+  border-color: #bac6bd;
+  background: #ffffff;
+  color: #0c3b24;
+}
+
+.archive-onboarding__import button:hover {
+  background: #eef3ee;
+}
+
+.archive-onboarding button:disabled {
+  opacity: 0.65;
+  cursor: wait;
 }
 
 .archive-shell-header {
@@ -422,6 +449,22 @@ textarea {
   flex-wrap: wrap;
   gap: 4px 12px;
 }
+
+.family-tree-issue-toast {
+  position: fixed;
+  z-index: 40;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  left: 50%;
+  display: flex;
+  width: min(19rem, calc(100% - 7rem));
+  transform: translateX(-50%);
+  border: 1px solid #e5abab;
+  border-radius: 12px;
+  background: #fff2f2;
+  color: #772828;
+  box-shadow: 0 6px 24px rgb(38 55 44 / 16%);
+}
+
 
 @media (max-width: 1279px) {
   .archive-shell-header {

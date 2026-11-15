@@ -5,6 +5,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import { ArchiveActions } from "@/components/ArchiveActions";
 import { ArchiveIcon } from "@/components/ArchiveIcon";
 import { ArchiveOnboarding } from "@/components/ArchiveOnboarding";
+import { FamilyTreeIssues } from "@/components/FamilyTreeIssues";
 import { PeopleTable } from "@/components/PeopleTable";
 import {
   PersonEditorModal,
@@ -30,8 +31,8 @@ import {
 import {
   createEmptyPersonDraft,
   createPersonId,
+  getFamilyTreeIssues,
   getPersonDisplayName,
-  validateFamilyTree,
 } from "@/utils/familyTree";
 import { ArchiveConflictError, MediaDBUpgradeBlockedError } from "@/utils/mediaDB";
 
@@ -54,7 +55,7 @@ interface FamilyTreeAppProps {
 const viewOptions: ReadonlyArray<{ id: AppView; label: string }> = [
   { id: "diagram", label: "Diagramma" },
   { id: "table", label: "Tabella" },
-  { id: "timeline", label: "Timeline" },
+  { id: "timeline", label: "Cronologia" },
 ];
 const emptyPeople: PersonRecord[] = [];
 const emptyMediaIds: readonly string[] = [];
@@ -98,10 +99,13 @@ function createArchiveFileName(familyName: string): string {
 }
 
 function showSaveError(error: unknown) {
-  const detail =
-    (error instanceof Error || error instanceof DOMException) && error.message
-      ? `\n\nDettaglio: ${error.message}`
-      : "";
+  let message = "";
+  if (error instanceof ArchiveConflictError || error instanceof MediaDBUpgradeBlockedError) {
+    message = error.message;
+  } else if (error instanceof DOMException && error.name === "AbortError") {
+    message = "La scrittura è stata interrotta. Riprova.";
+  }
+  const detail = message ? `\n\n${message}` : "";
   window.alert(
     `Non è stato possibile salvare l’archivio. Nessuna modifica è stata applicata.${detail}`,
   );
@@ -127,6 +131,8 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
   const [query, setQuery] = useState("");
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   const [editorState, setEditorState] = useState<EditorState | null>(null);
+  const [issuesDismissed, setIssuesDismissed] = useState(false);
+  const [issuesOpen, setIssuesOpen] = useState(false);
   const operationRef = useRef(false);
   const deferredQuery = useDeferredValue(query);
   const isAdmin = mode === "admin";
@@ -220,24 +226,26 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
     const assetId = parseMediaAssetReference(editorStoredPerson?.photo);
     return assetId ? portraits.viewsById.get(assetId) ?? null : null;
   }, [editorStoredPerson, portraits.viewsById]);
-  const warnings = useMemo(() => {
-    const treeWarnings = snapshot ? validateFamilyTree(snapshot) : [];
+  const issues = useMemo(() => snapshot ? getFamilyTreeIssues(snapshot) : [], [snapshot]);
+  const mediaWarnings = useMemo(() => {
+    const warnings: string[] = [];
     if (people.some(({ photo, attachments }) =>
       [photo, ...(attachments ?? [])].some((reference) => {
         const id = parseMediaAssetReference(reference);
         return id !== null && !assetIds?.has(id);
       }),
     )) {
-      treeWarnings.push("Mancano alcuni file multimediali. Puoi recuperarli importando un backup .albero completo.");
+      warnings.push("Mancano alcuni file multimediali. Puoi recuperarli importando un backup .albero completo.");
     }
     if (portraits.error || activeAttachments.error) {
-      treeWarnings.push("Non è stato possibile leggere alcuni file multimediali. Ricarica la pagina per riprovare.");
+      warnings.push("Non è stato possibile leggere alcuni file multimediali. Ricarica la pagina per riprovare.");
     }
-    return treeWarnings;
-  }, [activeAttachments.error, assetIds, people, portraits.error, snapshot]);
+    return warnings;
+  }, [activeAttachments.error, assetIds, people, portraits.error]);
   const isEditorOpen =
     isAdmin && editorState !== null && editorPerson !== null;
   const isPersonModalOpen = selectedPerson !== null && !isEditorOpen;
+  const showIssuesToast = issues.length > 0 && !issuesDismissed;
 
   const handleSelectPerson = useCallback((personId: string) => {
     setEditorState(null);
@@ -287,16 +295,6 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
         <p>Sto preparando l&apos;archivio</p>
       </main>
     );
-  }
-
-  if (needsArchiveSetup) {
-    return <ArchiveOnboarding onSubmit={async (name) => {
-      try {
-        await initializeArchive(name);
-      } catch (error) {
-        showSaveError(error);
-      }
-    }} />;
   }
 
   const archiveTitle = getArchiveTitle(
@@ -434,9 +432,8 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
     operationRef.current = true;
     try {
       const imported = await importAlberoPackage(file);
-      const confirmed = window.confirm(
-        "Importare “" + file.name + "”? L’archivio corrente sarà sostituito con " +
-          imported.snapshot.people.length + " persone e " + imported.assets.length + " file multimediali.",
+      const confirmed = needsArchiveSetup || window.confirm(
+        `Importare “${file.name}”? L’archivio corrente sarà sostituito con ${imported.snapshot.people.length} persone e ${imported.assets.length} file multimediali.`,
       );
       if (!confirmed || !(await replaceSnapshot(imported.snapshot, imported.assets))) {
         return false;
@@ -444,6 +441,8 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
       setQuery("");
       setSelectedPersonId(null);
       setEditorState(null);
+      setIssuesDismissed(false);
+      setIssuesOpen(false);
       return true;
     } catch (error) {
       if (error instanceof ArchiveConflictError) {
@@ -454,6 +453,27 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
       operationRef.current = false;
     }
   };
+
+  if (needsArchiveSetup) {
+    return (
+      <ArchiveOnboarding
+        onImportArchive={handleImportArchive}
+        onSubmit={async (name) => {
+          if (operationRef.current) {
+            return;
+          }
+          operationRef.current = true;
+          try {
+            await initializeArchive(name);
+          } catch (error) {
+            showSaveError(error);
+          } finally {
+            operationRef.current = false;
+          }
+        }}
+      />
+    );
+  }
 
   return (
     <main className="family-tree-app">
@@ -524,11 +544,11 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
           </aside>
         ) : null}
 
-        {warnings.length > 0 ? (
+        {mediaWarnings.length > 0 ? (
           <aside aria-live="polite" className="family-tree-warnings">
-            <strong>Controlli di coerenza</strong>
+            <strong>File multimediali</strong>
             <div>
-              {warnings.map((warning) => (
+              {mediaWarnings.map((warning) => (
                 <span key={warning}>{warning}</span>
               ))}
             </div>
@@ -560,6 +580,42 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
         ) : null}
       </section>
 
+      {showIssuesToast ? (
+        <aside aria-label="Avviso di coerenza" className="family-tree-issue-toast">
+          <button
+            aria-haspopup="dialog"
+            className="min-h-11 flex-1 rounded-l-xl px-3 py-2 text-left leading-tight hover:bg-[#fde3e3] focus-visible:outline-2"
+            onClick={() => setIssuesOpen(true)}
+            tabIndex={isPersonModalOpen || isEditorOpen || issuesOpen ? -1 : undefined}
+            type="button"
+          >
+            <span className="block text-sm font-semibold">Controlli di coerenza</span>
+            <span className="block text-xs" role="status">
+              {issues.length === 1 ? "1 criterio da verificare" : `${issues.length} criteri da verificare`}
+            </span>
+          </button>
+          <button
+            aria-label="Nascondi avviso di coerenza"
+            className="min-h-11 min-w-11 shrink-0 rounded-r-xl border-l border-[#e5abab] text-xl hover:bg-[#fde3e3] focus-visible:outline-2"
+            onClick={() => setIssuesDismissed(true)}
+            tabIndex={isPersonModalOpen || isEditorOpen || issuesOpen ? -1 : undefined}
+            type="button"
+          >
+            ×
+          </button>
+        </aside>
+      ) : null}
+      {issuesOpen && issues.length > 0 ? (
+        <FamilyTreeIssues
+          issues={issues}
+          onClose={() => setIssuesOpen(false)}
+          onSelectPerson={(id) => {
+            setIssuesOpen(false);
+            handleSelectPerson(id);
+          }}
+          peopleById={storedPeopleById}
+        />
+      ) : null}
       {isPersonModalOpen ? (
         <PersonModal
           media={activeMedia}

@@ -16,6 +16,7 @@ describe("TimelineView scrolling", () => {
       surname: null,
       knownAs: null,
       birthDate: index < 1500 ? "2000-01-01" : null,
+      deathDate: null,
       parentIds: [],
       childIds: [],
       partnerIds: [],
@@ -37,8 +38,43 @@ describe("TimelineView scrolling", () => {
     rerender(<TimelineView onSelectPerson={onSelectPerson} people={people} query="Persona 2998" />);
     expect(screen.getByText("1 corrispondenze evidenziate")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Persona 2998" })).toHaveClass("bg-[#edf4ef]");
-    await user.click(screen.getByRole("button", { name: "Aumenta zoom timeline" }));
+    await user.click(screen.getByRole("button", { name: "Aumenta zoom cronologia" }));
     expect(screen.getByText("Orizzontale · 125%")).toBeVisible();
     expect(container.querySelectorAll("[data-virtual-row]").length).toBeLessThan(50);
+  });
+});
+
+describe("TimelineView dates", () => {
+  const currentYear = new Date().getUTCFullYear();
+  const prototypePerson = {
+    ...seedFamilyTree.people[0],
+    knownAs: null,
+    surname: "Ferraro",
+    parentIds: [],
+    childIds: [],
+    partnerIds: [],
+  };
+  const people = [
+    { ...prototypePerson, id: "antonino", name: "Antonino", birthDate: "1918-01-01", deathDate: "1982-01-01" },
+    { ...prototypePerson, id: "amir", name: "Amir", birthDate: `${currentYear - 22}-01-01`, deathDate: null },
+    { ...prototypePerson, id: "maria", name: "Maria", birthDate: null, deathDate: "1950-01-01" },
+  ];
+
+  it("shows death year below the person's name, including when birth is unknown", () => {
+    render(<TimelineView people={people} onSelectPerson={vi.fn()} query="" />);
+
+    const antonino = screen.getByRole("button", { name: /Apri la scheda di Antonino Ferraro/ });
+    expect(antonino.querySelector("[data-timeline-lifespan]")).toHaveTextContent("1918 – 1982");
+    expect(screen.getByRole("button", { name: "Maria Ferraro, decesso 1950" })).toHaveTextContent("Decesso 1950");
+  });
+
+  it("shows only the birth year for a living person", () => {
+    render(<TimelineView people={people} onSelectPerson={vi.fn()} query="" />);
+
+    const amir = screen.getByRole("button", { name: /Apri la scheda di Amir Ferraro/ });
+    expect(amir.querySelector("[data-timeline-bar] [data-timeline-birth]")).toHaveTextContent(String(currentYear - 22));
+    expect(amir.querySelector("[data-timeline-bar] [data-timeline-end]")).toBeNull();
+    expect(amir.querySelector("[data-timeline-lifespan]")).toHaveTextContent(new RegExp(`^${currentYear - 22}$`));
+    expect(amir).not.toHaveAccessibleName(/oggi/i);
   });
 });

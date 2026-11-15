@@ -21,7 +21,7 @@ Object.defineProperty(globalThis, "ResizeObserver", {
 
 Object.defineProperty(window, "matchMedia", {
   writable: true,
-  value: vi.fn().mockImplementation((query: string) => ({
+  value: (query: string) => ({
     matches: false,
     media: query,
     onchange: null,
@@ -30,7 +30,7 @@ Object.defineProperty(window, "matchMedia", {
     addListener: vi.fn(),
     removeListener: vi.fn(),
     dispatchEvent: vi.fn(),
-  })),
+  }),
 });
 
 Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", {

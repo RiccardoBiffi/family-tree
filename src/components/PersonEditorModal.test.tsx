@@ -51,6 +51,7 @@ function renderEditor(
     existingMedia?: readonly PersonMediaView[];
     existingPhoto?: PersonPhotoView | null;
     mode?: "create" | "edit";
+    person?: typeof anna;
   } = {},
 ) {
   const onSave = vi.fn();
@@ -64,7 +65,7 @@ function renderEditor(
       onClose={onClose}
       onSave={onSave}
       people={seedFamilyTree.people}
-      person={mode === "create" ? createEmptyPersonDraft() : anna}
+      person={options.person ?? (mode === "create" ? createEmptyPersonDraft() : anna)}
     />,
   );
 
@@ -153,10 +154,39 @@ describe("PersonEditorModal", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("limits biological parents and independently edits the pair shown in the diagram", async () => {
+    const user = userEvent.setup();
+    const { onSave } = renderEditor(vi.fn(), {
+      person: { ...anna, parentIds: ["p1", "p3", "p4"], biologicalParentIds: ["p1", "p3"] },
+    });
+    const biological = screen.getByRole("button", { name: "Genitori biologici" });
+    await user.click(biological);
+    expect(screen.getByRole("checkbox", { name: /Lucia Rinaldi/i })).toBeDisabled();
+    await user.click(screen.getByRole("checkbox", { name: /Marco Rinaldi/i }));
+    await user.click(screen.getByRole("checkbox", { name: /Lucia Rinaldi/i }));
+    await user.click(biological);
+    const adoptive = screen.getByRole("button", { name: "Genitori adottivi" });
+    await user.click(adoptive);
+    await user.click(screen.getByRole("checkbox", { name: /Marco Rinaldi/i }));
+    await user.click(adoptive);
+    const diagram = screen.getByRole("button", { name: "Genitori nel diagramma" });
+    await user.click(diagram);
+    await user.click(screen.getByRole("checkbox", { name: /Marco Rinaldi/i }));
+    await user.click(screen.getByRole("checkbox", { name: /Lucia Rinaldi/i }));
+    await user.click(diagram);
+    await user.click(screen.getByRole("button", { name: "Salva modifiche" }));
+
+    expect(onSave.mock.calls[0][0]).toMatchObject({
+      parentIds: expect.arrayContaining(["p1", "p3", "p4"]),
+      biologicalParentIds: ["p1", "p4"],
+      diagramParentIds: ["p3", "p4"],
+    });
+  });
+
   it("submits every editable field and keeps commas usable in tags", async () => {
     const user = userEvent.setup();
     const { onSave } = renderEditor();
-    const tagsInput = screen.getByLabelText("Tags separati da virgola");
+    const tagsInput = screen.getByLabelText("Etichette separate da virgola");
 
     fireEvent.change(screen.getByLabelText("Nome"), { target: { value: "Anita" } });
     fireEvent.change(screen.getByLabelText("Cognome"), { target: { value: "Bianchi" } });
@@ -191,9 +221,9 @@ describe("PersonEditorModal", () => {
 
     expect(tagsInput).toHaveValue("memoria, fotografie");
 
-    await user.click(screen.getByRole("button", { name: "Genitori" }));
+    await user.click(screen.getByRole("button", { name: "Genitori biologici" }));
     await user.click(screen.getByRole("checkbox", { name: /Marco Rinaldi/i }));
-    await user.click(screen.getByRole("button", { name: "Genitori" }));
+    await user.click(screen.getByRole("button", { name: "Genitori biologici" }));
     await user.click(screen.getByRole("button", { name: "Partner" }));
     await user.click(screen.getByRole("checkbox", { name: /Lucia Rinaldi/i }));
     await user.click(screen.getByRole("button", { name: "Partner" }));

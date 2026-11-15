@@ -29,10 +29,37 @@ export function createPersonId(index = 0): string {
   return `person-${Date.now()}-${index + 1}`;
 }
 
-function cleanReferenceList(sourceId: string, ids: string[], validIds: Set<string>): string[] {
-  return uniqueStrings(
-    ids.filter((id) => id !== sourceId && validIds.has(id)),
-  ).sort((left, right) => left.localeCompare(right));
+function cleanReferenceList(sourceId: string, ids: string[], validIds: Set<string>, preserveOrder = false): string[] {
+  const uniqueIds = uniqueStrings(ids.filter((id) => id !== sourceId && validIds.has(id)));
+  return preserveOrder ? uniqueIds : uniqueIds.sort((left, right) => left.localeCompare(right));
+}
+
+function cleanParentSelections(person: PersonRecord, parentIds: string[]): PersonRecord {
+  const biologicalParentIds = person.biologicalParentIds?.filter((id) => parentIds.includes(id));
+  const diagramParentIds = person.diagramParentIds?.filter((id) => parentIds.includes(id));
+  return {
+    ...person,
+    parentIds,
+    ...(biologicalParentIds === undefined ? {} : { biologicalParentIds: biologicalParentIds.slice(0, 2) }),
+    ...(diagramParentIds === undefined ? {} : { diagramParentIds: diagramParentIds.length <= 2 ? diagramParentIds : [] }),
+  };
+}
+
+export function getBiologicalParentIds(person: PersonRecord): string[] {
+  // Older archives record parent links in order without a separate designation.
+  return person.biologicalParentIds ?? person.parentIds.slice(0, 2);
+}
+
+export function getDiagramParentIds(person: PersonRecord): string[] {
+  if (person.parentIds.length <= 2) {
+    return person.parentIds;
+  }
+  const chosen = person.diagramParentIds;
+  return chosen?.length === 2 &&
+    chosen[0] !== chosen[1] &&
+    chosen.every((id) => person.parentIds.includes(id))
+    ? chosen
+    : [];
 }
 
 function upsertReference(collection: string[], id: string): string[] {
@@ -68,6 +95,7 @@ export function reconcilePersonRelationships(
     nextPerson.id,
     nextPerson.parentIds,
     validIds,
+    true,
   );
   const childIds = cleanReferenceList(
     nextPerson.id,
@@ -86,10 +114,9 @@ export function reconcilePersonRelationships(
   const reconciledPeople = currentPeople
     .filter((person) => person.id !== nextPerson.id)
     .map((person) => {
-      const parentIdsForPerson = removeReference(
-        person.parentIds,
-        nextPerson.id,
-      );
+      const parentIdsForPerson = childIdSet.has(person.id)
+        ? upsertReference(person.parentIds, nextPerson.id)
+        : removeReference(person.parentIds, nextPerson.id);
       const childIdsForPerson = removeReference(
         person.childIds,
         nextPerson.id,
@@ -100,10 +127,7 @@ export function reconcilePersonRelationships(
       );
 
       return {
-        ...person,
-        parentIds: childIdSet.has(person.id)
-          ? upsertReference(parentIdsForPerson, nextPerson.id)
-          : parentIdsForPerson,
+        ...cleanParentSelections(person, parentIdsForPerson),
         childIds: parentIdSet.has(person.id)
           ? upsertReference(childIdsForPerson, nextPerson.id)
           : childIdsForPerson,
@@ -116,8 +140,7 @@ export function reconcilePersonRelationships(
   return [
     ...reconciledPeople,
     {
-      ...nextPerson,
-      parentIds,
+      ...cleanParentSelections(nextPerson, parentIds),
       childIds,
       partnerIds,
     },
@@ -153,7 +176,7 @@ export function normalizeFamilyTree(
   const validIds = new Set(peopleById.keys());
 
   for (const person of peopleById.values()) {
-    person.parentIds = cleanReferenceList(person.id, person.parentIds, validIds);
+    person.parentIds = cleanReferenceList(person.id, person.parentIds, validIds, true);
     person.childIds = cleanReferenceList(person.id, person.childIds, validIds);
     person.partnerIds = cleanReferenceList(person.id, person.partnerIds, validIds);
   }
@@ -183,8 +206,7 @@ export function normalizeFamilyTree(
 
   const people = sortPeople(
     Array.from(peopleById.values()).map((person) => ({
-      ...person,
-      parentIds: cleanReferenceList(person.id, person.parentIds, validIds),
+      ...cleanParentSelections(person, cleanReferenceList(person.id, person.parentIds, validIds, true)),
       childIds: cleanReferenceList(person.id, person.childIds, validIds),
       partnerIds: cleanReferenceList(person.id, person.partnerIds, validIds),
     })),
@@ -197,7 +219,10 @@ export function normalizeFamilyTree(
   };
 }
 
-function analyzeAncestry(people: readonly PersonRecord[]) {
+function analyzeAncestry(
+  people: readonly PersonRecord[],
+  parentIdsFor: (person: PersonRecord) => string[] = (person) => person.parentIds,
+) {
   const peopleById = new Map(people.map((person) => [person.id, person]));
   const generations = new Map<string, number>();
   const active = new Set<string>();
@@ -208,18 +233,18 @@ function analyzeAncestry(people: readonly PersonRecord[]) {
       continue;
     }
 
-    const stack = [{ person, nextParent: 0, generation: 0 }];
+    const stack = [{ person, parentIds: parentIdsFor(person), nextParent: 0, generation: 0 }];
     active.add(person.id);
     while (stack.length > 0) {
       const frame = stack[stack.length - 1];
-      if (frame.nextParent >= frame.person.parentIds.length) {
+      if (frame.nextParent >= frame.parentIds.length) {
         generations.set(frame.person.id, frame.generation);
         active.delete(frame.person.id);
         stack.pop();
         continue;
       }
 
-      const parentId = frame.person.parentIds[frame.nextParent];
+      const parentId = frame.parentIds[frame.nextParent];
       const recordedGeneration = generations.get(parentId);
       const parent = peopleById.get(parentId);
 
@@ -231,42 +256,81 @@ function analyzeAncestry(people: readonly PersonRecord[]) {
       }
 
       active.add(parent.id);
-      stack.push({ person: parent, nextParent: 0, generation: 0 });
+      stack.push({ person: parent, parentIds: parentIdsFor(parent), nextParent: 0, generation: 0 });
     }
   }
 
   return { generations, hasCycle };
 }
 
-export function validateFamilyTree(snapshot: FamilyTreeSnapshot): string[] {
-  const warnings: string[] = [];
+export interface FamilyTreeIssue {
+  id: "empty" | "ancestry-cycle" | "diagram-parents" | "isolated";
+  title: string;
+  message: string;
+  personIds: string[];
+}
 
-  if (snapshot.people.length === 0) {
-    warnings.push("L'albero e' vuoto. Aggiungi almeno una persona per iniziare.");
+export function getFamilyTreeIssues({ people }: FamilyTreeSnapshot): FamilyTreeIssue[] {
+  if (people.length === 0) {
+    return [{
+      id: "empty",
+      title: "Archivio vuoto",
+      message: "Aggiungi almeno una persona per iniziare.",
+      personIds: [],
+    }];
   }
 
-  if (analyzeAncestry(snapshot.people).hasCycle) {
-    warnings.push("Sono state rilevate dipendenze circolari tra antenati e discendenti.");
+  const issues: FamilyTreeIssue[] = [];
+  if (analyzeAncestry(people).hasCycle) {
+    const indexById = new Map(people.map(({ id }, index) => [id, index]));
+    const ancestry = people.map(({ parentIds }) => {
+      const parents = new Set<number>();
+      for (const id of parentIds) {
+        const index = indexById.get(id);
+        if (index !== undefined) {
+          parents.add(index);
+        }
+      }
+      return parents;
+    });
+    const cyclic = getDirectedCycles(ancestry);
+    issues.push({
+      id: "ancestry-cycle",
+      title: "Cicli di ascendenza",
+      message: "Queste persone fanno parte di relazioni circolari tra antenati e discendenti.",
+      personIds: people.filter((_, index) => cyclic.has(index)).map(({ id }) => id),
+    });
   }
 
-  const peopleWithManyParents = snapshot.people.filter((person) => person.parentIds.length > 2);
-  if (peopleWithManyParents.length > 0) {
-    warnings.push("Alcune persone hanno piu' di due genitori associati: verifica la coerenza genealogica.");
-  }
-
-  const isolatedPeople = snapshot.people.filter(
-    (person) =>
-      person.parentIds.length === 0 &&
-      person.childIds.length === 0 &&
-      person.partnerIds.length === 0,
+  const missingDiagramParents = people.filter((person) =>
+    person.parentIds.length > 2 && getDiagramParentIds(person).length !== 2,
   );
-  if (isolatedPeople.length > 0) {
-    warnings.push(
-      `${isolatedPeople.length} persona/e non hanno ancora relazioni collegate nell'albero.`,
-    );
+  if (missingDiagramParents.length > 0) {
+    issues.push({
+      id: "diagram-parents",
+      title: "Genitori da scegliere per il Diagramma",
+      message: "Per le persone con più di due genitori registrati, scegli quali due mostrare nel Diagramma.",
+      personIds: missingDiagramParents.map(({ id }) => id),
+    });
   }
 
-  return warnings;
+  const isolated = people.filter(({ parentIds, childIds, partnerIds }) =>
+    parentIds.length === 0 && childIds.length === 0 && partnerIds.length === 0,
+  );
+  if (isolated.length > 0) {
+    issues.push({
+      id: "isolated",
+      title: "Persone senza relazioni",
+      message: "Queste persone non hanno genitori, figli o partner collegati nell’archivio.",
+      personIds: isolated.map(({ id }) => id),
+    });
+  }
+
+  return issues;
+}
+
+export function validateFamilyTree(snapshot: FamilyTreeSnapshot): string[] {
+  return getFamilyTreeIssues(snapshot).map(({ message }) => message);
 }
 
 export function createEmptyPersonDraft(): PersonRecord {
@@ -430,7 +494,7 @@ function getDirectedCycles(outgoing: readonly ReadonlySet<number>[]): Set<number
 }
 
 export function computeDiagramGenerationMap(people: readonly PersonRecord[]): Map<string, number> {
-  const baseGenerations = computeGenerationMap(people);
+  const baseGenerations = analyzeAncestry(people, getDiagramParentIds).generations;
   const groups = getPartnerComponents(people);
   if (groups.length === people.length) {
     return baseGenerations;
@@ -439,7 +503,7 @@ export function computeDiagramGenerationMap(people: readonly PersonRecord[]): Ma
   const ancestryEdges: [string, string][] = [];
   for (const child of people) {
     const generation = baseGenerations.get(child.id) ?? 0;
-    for (const parentId of child.parentIds) {
+    for (const parentId of getDiagramParentIds(child)) {
       const parentGeneration = baseGenerations.get(parentId);
       if (parentGeneration !== undefined && parentGeneration < generation) {
         ancestryEdges.push([parentId, child.id]);

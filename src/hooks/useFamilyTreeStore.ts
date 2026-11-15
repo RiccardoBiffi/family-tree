@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { FamilyTreeSnapshot } from "@/models/FamilyTree";
 import { parseMediaAssetReference, type MediaAssetRecord } from "@/models/MediaAsset";
-import type { PersonRecord } from "@/models/Person";
+import { Person, type PersonRecord } from "@/models/Person";
 import { normalizeFamilyTree, reconcilePersonRelationships } from "@/utils/familyTree";
 import { LocalStorageDB } from "@/utils/localStorageDB";
 import { ArchiveConflictError, MediaDB, type ArchiveMediaChanges } from "@/utils/mediaDB";
@@ -37,6 +37,38 @@ function getReferenceIds(person: PersonRecord): string[] {
 
 function getArchiveReferenceIds(snapshot: FamilyTreeSnapshot): string[] {
   return Array.from(new Set(snapshot.people.flatMap(getReferenceIds)));
+}
+
+function createExampleFamily(): PersonRecord[] {
+  const fatherId = "example-giuseppe-rossi";
+  const motherId = "example-maria-bianchi";
+  const childId = "example-leonardo-rossi";
+
+  return [
+    new Person({
+      id: fatherId,
+      name: "Giuseppe",
+      surname: "Rossi",
+      sex: "male",
+      partnerIds: [motherId],
+      childIds: [childId],
+    }).toRecord(),
+    new Person({
+      id: motherId,
+      name: "Maria",
+      surname: "Bianchi",
+      sex: "female",
+      partnerIds: [fatherId],
+      childIds: [childId],
+    }).toRecord(),
+    new Person({
+      id: childId,
+      name: "Leonardo",
+      surname: "Rossi",
+      sex: "male",
+      parentIds: [fatherId, motherId],
+    }).toRecord(),
+  ];
 }
 
 function applySessionChanges(
@@ -294,6 +326,7 @@ export function useFamilyTreeStore() {
     }
     return updateArchive((snapshot) => ({
       ...snapshot,
+      people: createExampleFamily(),
       metadata: {
         ...snapshot.metadata,
         title: `Archivio della famiglia ${normalized}`,

@@ -300,6 +300,18 @@ function validateFamilyTreeSnapshot(
   const relationshipFields = ["parentIds", "childIds", "partnerIds"] as const;
   for (let index = 0; index < people.length; index += 1) {
     const person = people[index] as Record<string, unknown>;
+    const parentIds = person.parentIds as string[];
+    for (const field of ["biologicalParentIds", "diagramParentIds"] as const) {
+      const references = person[field];
+      if (references === undefined) {
+        continue;
+      }
+      const path = `snapshot.people[${index}].${field}`;
+      assertStringList(references, path, 2, 256);
+      if (new Set(references).size !== references.length || references.some((id) => !parentIds.includes(id))) {
+        packageError("INVALID_SNAPSHOT", `${path} must contain distinct ids listed in parentIds.`);
+      }
+    }
     for (const field of relationshipFields) {
       const references = person[field] as string[];
       if (new Set(references).size !== references.length) {

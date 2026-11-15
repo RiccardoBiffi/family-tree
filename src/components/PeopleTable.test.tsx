@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 import { PeopleTable } from "@/components/PeopleTable";
 import { seedFamilyTree } from "@/data/seedFamilyTree";
 
+const savedColumnsKey = "family-tree.table-columns.v1";
+
 function getHeaderLabels() {
   return screen
     .getAllByRole("columnheader")
@@ -98,6 +100,54 @@ describe("PeopleTable column chooser", () => {
     expect(
       screen.queryByRole("dialog", { name: "Gestisci colonne" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("restores column visibility and order after the table is remounted", async () => {
+    const user = userEvent.setup();
+    const table = <PeopleTable onSelectPerson={vi.fn()} people={seedFamilyTree.people} query="" />;
+    const { unmount } = render(table);
+    await user.click(screen.getByRole("button", { name: "Colonne" }));
+    const chooser = within(screen.getByRole("dialog", { name: "Gestisci colonne" }));
+    await user.click(chooser.getByRole("checkbox", { name: "Genitori" }));
+    await user.click(chooser.getByRole("button", { name: "Sposta Genitori su" }));
+    await user.click(chooser.getByRole("checkbox", { name: "Professione" }));
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "Persona" }));
+
+    unmount();
+    render(table);
+
+    expectAdjacent(getHeaderLabels(), "Genitori", "Figli");
+    expect(screen.queryByRole("columnheader", { name: "Professione" })).not.toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Nascita" })).toHaveAttribute("aria-sort", "ascending");
+  });
+
+  it("ignores invalid preference values and keeps Persona visible", () => {
+    localStorage.setItem(savedColumnsKey, JSON.stringify({
+      order: ["parentsCount", "parentsCount", "not-a-column", 42],
+      visibility: { displayName: false, notes: "visible", parentsCount: true },
+    }));
+    render(<PeopleTable onSelectPerson={vi.fn()} people={seedFamilyTree.people} query="" />);
+
+    expect(getHeaderLabels().slice(0, 3)).toEqual(["Genitori", "Persona", "Nascita"]);
+    expect(screen.queryByRole("columnheader", { name: "Note" })).not.toBeInTheDocument();
+  });
+
+  it("still updates columns when local storage refuses reads and writes", async () => {
+    const user = userEvent.setup();
+    const denied = () => { throw new DOMException("Storage denied", "SecurityError"); };
+    const read = vi.spyOn(Storage.prototype, "getItem").mockImplementation(denied);
+    const write = vi.spyOn(Storage.prototype, "setItem").mockImplementation(denied);
+    try {
+      render(<PeopleTable onSelectPerson={vi.fn()} people={seedFamilyTree.people} query="" />);
+      expect(screen.queryByRole("columnheader", { name: "Genitori" })).not.toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Colonne" }));
+      await user.click(screen.getByRole("checkbox", { name: "Genitori" }));
+      expect(screen.getByRole("columnheader", { name: "Genitori" })).toBeInTheDocument();
+    } finally {
+      read.mockRestore();
+      write.mockRestore();
+    }
   });
 });
 

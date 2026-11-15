@@ -15,11 +15,11 @@ vi.mock("@xyflow/react", async () => {
       onNodeClick,
     }: {
       children?: React.ReactNode;
-      nodes?: Array<{ id: string; data?: { label?: string } }>;
+      nodes?: Array<{ id: string; type?: string; data?: { label?: string } }>;
       onNodeClick?: (_event: unknown, node: { id: string }) => void;
     }) => (
       <div data-testid="react-flow">
-        {nodes.map((node) => (
+        {nodes.filter(({ type }) => type === "familyTree").map((node) => (
           <button
             key={node.id}
             onClick={() => onNodeClick?.({}, node)}
@@ -120,11 +120,6 @@ describe("FamilyTreeApp user media", () => {
   let database: ReturnType<typeof mockArchiveDB>;
   beforeEach(() => {
     database = mockArchiveDB();
-    vi.mocked(window.matchMedia).mockImplementation((query) => ({
-      matches: false, media: query, onchange: null,
-      addEventListener() {}, removeEventListener() {},
-      addListener() {}, removeListener() {}, dispatchEvent: () => true,
-    }));
     archiveMocks.importAlberoPackage.mockReset();
     vi.stubGlobal("URL", Object.assign(class extends URL {}, {
       createObjectURL: vi.fn(() => "blob:test"),
@@ -280,5 +275,40 @@ describe("FamilyTreeApp user media", () => {
       expect(database.snapshot?.people.find(({ id }) => id === "p1")?.photo).toBeNull();
       expect(database.snapshot?.people.find(({ id }) => id === "p1")?.attachments).toBeNull();
     });
+  });
+
+  it("keeps first setup open for an invalid import, then restores a backup directly", async () => {
+    const user = userEvent.setup();
+    const file = new File(["archive"], "famiglia.albero", {
+      type: "application/vnd.family-tree.albero+gzip",
+    });
+    const snapshot = {
+      ...seedFamilyTree,
+      metadata: { ...seedFamilyTree.metadata, familyName: "Importata" },
+      people: [],
+    };
+    archiveMocks.importAlberoPackage
+      .mockRejectedValueOnce(new Error("Invalid archive"))
+      .mockResolvedValue({ assets: [], snapshot });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const { unmount } = render(<FamilyTreeApp mode="visitor" />);
+
+    await screen.findByRole("button", { name: "Importa archivio .albero" });
+    const input = screen.getByLabelText("Seleziona archivio da importare");
+    await user.upload(input, file);
+    expect(await screen.findByText("Importazione non riuscita. Controlla il file.")).toBeInTheDocument();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(database.commit).not.toHaveBeenCalled();
+
+    await user.upload(input, file);
+    expect(await screen.findByRole("heading", { name: "Archivio Importata" })).toBeInTheDocument();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(database.commit).toHaveBeenCalledTimes(1);
+    expect(database.snapshot?.people).toEqual([]);
+    expect(window.localStorage.getItem(FAMILY_TREE_STORAGE_KEY)).toBeNull();
+    unmount();
+    render(<FamilyTreeApp mode="admin" />);
+    expect(await screen.findByRole("heading", { name: "Archivio Importata" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Importa archivio .albero" })).not.toBeInTheDocument();
   });
 });

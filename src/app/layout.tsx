@@ -3,9 +3,9 @@ import "@xyflow/react/dist/style.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Archivio Rinaldi",
+  title: "Archivio di famiglia",
   description:
-    "Archivio genealogico interattivo con diagramma, tabella e timeline, salvato nel browser.",
+    "Archivio genealogico interattivo con diagramma, tabella e cronologia, salvato nel browser.",
 };
 
 export default function RootLayout({

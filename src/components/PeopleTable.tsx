@@ -39,6 +39,48 @@ const INITIAL_COLUMN_ORDER: ColumnOrderState = [
   "partners",
   "notes",
 ];
+const INITIAL_COLUMN_VISIBILITY: VisibilityState = {
+  deathDate: false,
+  notes: false,
+  parentsCount: false,
+  partners: false,
+};
+const COLUMN_PREFERENCES_KEY = "family-tree.table-columns.v1";
+
+interface ColumnPreferences {
+  order: ColumnOrderState;
+  visibility: VisibilityState;
+}
+
+function loadColumnPreferences(): ColumnPreferences {
+  const defaults = { order: INITIAL_COLUMN_ORDER, visibility: INITIAL_COLUMN_VISIBILITY };
+  try {
+    const serialized = window.localStorage.getItem(COLUMN_PREFERENCES_KEY);
+    const saved: unknown = serialized ? JSON.parse(serialized) : null;
+    if (typeof saved !== "object" || saved === null) return defaults;
+
+    const { order, visibility } = saved as { order?: unknown; visibility?: unknown };
+    const validOrder = new Set<string>();
+    if (Array.isArray(order)) {
+      for (const id of order) {
+        if (typeof id === "string" && INITIAL_COLUMN_ORDER.includes(id)) validOrder.add(id);
+      }
+    }
+    for (const id of INITIAL_COLUMN_ORDER) validOrder.add(id);
+
+    const validVisibility = { ...INITIAL_COLUMN_VISIBILITY };
+    if (typeof visibility === "object" && visibility !== null && !Array.isArray(visibility)) {
+      const columns = visibility as Record<string, unknown>;
+      for (const id of INITIAL_COLUMN_ORDER) {
+        const value = columns[id];
+        if (id !== "displayName" && typeof value === "boolean") validVisibility[id] = value;
+      }
+    }
+    return { order: Array.from(validOrder), visibility: validVisibility };
+  } catch {
+    return defaults;
+  }
+}
 
 const HEADER_HEIGHT = 56;
 const ROW_HEIGHT = 62;
@@ -131,13 +173,9 @@ function MoveIcon({ direction }: { direction: "up" | "down" }) {
 
 export function PeopleTable({ people, query, onSelectPerson }: PeopleTableProps) {
   const [sorting, setSorting] = useState<SortingState>([{ id: "birthDate", desc: false }]);
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({
-    deathDate: false,
-    notes: false,
-    parentsCount: false,
-    partners: false,
-  });
-  const [columnOrder, setColumnOrder] = useState<ColumnOrderState>(INITIAL_COLUMN_ORDER);
+  const [columnPreferences, setColumnPreferences] = useState(loadColumnPreferences);
+  const { order: columnOrder, visibility: columnVisibility } = columnPreferences;
+  const lastPreferences = useRef(columnPreferences);
   const [isColumnChooserOpen, setIsColumnChooserOpen] = useState(false);
   const columnChooserRef = useRef<HTMLDivElement>(null);
   const columnChooserButtonRef = useRef<HTMLButtonElement>(null);
@@ -152,6 +190,17 @@ export function PeopleTable({ people, query, onSelectPerson }: PeopleTableProps)
       : people,
     [deferredQuery, people],
   );
+
+  useEffect(() => {
+    if (lastPreferences.current === columnPreferences) return;
+    lastPreferences.current = columnPreferences;
+
+    try {
+      window.localStorage.setItem(COLUMN_PREFERENCES_KEY, JSON.stringify(columnPreferences));
+    } catch {
+      // The controls still work when local storage is unavailable.
+    }
+  }, [columnPreferences]);
 
   useEffect(() => {
     if (!isColumnChooserOpen) {
@@ -275,9 +324,11 @@ export function PeopleTable({ people, query, onSelectPerson }: PeopleTableProps)
       sorting,
       columnVisibility,
     },
-    onColumnOrderChange: setColumnOrder,
     onSortingChange: setSorting,
-    onColumnVisibilityChange: setColumnVisibility,
+    onColumnVisibilityChange: (update) => setColumnPreferences((current) => ({
+      ...current,
+      visibility: typeof update === "function" ? update(current.visibility) : update,
+    })),
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
   });
@@ -300,7 +351,8 @@ export function PeopleTable({ people, query, onSelectPerson }: PeopleTableProps)
   );
 
   const moveColumn = (columnId: string, offset: -1 | 1) => {
-    setColumnOrder((currentOrder) => {
+    setColumnPreferences((current) => {
+      const currentOrder = current.order;
       const currentIndex = currentOrder.indexOf(columnId);
       const nextIndex = currentIndex + offset;
 
@@ -309,7 +361,7 @@ export function PeopleTable({ people, query, onSelectPerson }: PeopleTableProps)
         nextIndex < 0 ||
         nextIndex >= currentOrder.length
       ) {
-        return currentOrder;
+        return current;
       }
 
       const nextOrder = [...currentOrder];
@@ -317,7 +369,7 @@ export function PeopleTable({ people, query, onSelectPerson }: PeopleTableProps)
         nextOrder[nextIndex],
         nextOrder[currentIndex],
       ];
-      return nextOrder;
+      return { ...current, order: nextOrder };
     });
   };
 

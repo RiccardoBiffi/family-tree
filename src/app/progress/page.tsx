@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 
 export const metadata: Metadata = {
-  title: "Family Tree QA Progress",
+  title: "Stato delle verifiche | Archivio di famiglia",
   robots: {
     follow: false,
     index: false,
@@ -11,100 +11,100 @@ export const metadata: Metadata = {
 
 const rounds = [
   {
-    name: "Baseline",
-    status: "Complete",
-    finding: "The visualization starts below repeated archive and access sections.",
+    name: "Versione iniziale",
+    status: "Completata",
+    finding: "La visualizzazione inizia sotto sezioni ripetute sull’archivio e sull’accesso.",
   },
   {
-    name: "Gold references",
-    status: "Complete",
-    finding: "Five approved desktop/mobile concepts lock hierarchy and interaction anatomy.",
+    name: "Riferimenti approvati",
+    status: "Completata",
+    finding: "Cinque proposte approvate per computer e dispositivi mobili definiscono la gerarchia visiva e le interazioni.",
   },
   {
-    name: "Build round 1",
-    status: "Critiqued",
-    finding: "Candidate won blind A/B; critics found miniaturized diagram framing and excessive timeline density.",
+    name: "Sviluppo · fase 1",
+    status: "Revisionata",
+    finding: "La nuova versione ha prevalso nel test A/B in cieco. La revisione ha rilevato un diagramma troppo piccolo e una cronologia troppo densa.",
   },
   {
-    name: "Repair round 2",
-    status: "Complete",
-    finding: "Responsive diagram geometry, exact fit padding, denser timeline, legal names, and mobile controls shipped.",
+    name: "Correzioni · fase 2",
+    status: "Completata",
+    finding: "Sono stati introdotti il diagramma adattabile, margini precisi per l’inquadratura, una cronologia più compatta, i nomi anagrafici e i comandi per dispositivi mobili.",
   },
   {
-    name: "Verification round 3",
-    status: "Passed",
-    finding: "Desktop/mobile browser flows, 44px targets, focus behavior, axe, lint, tests, types, and build pass.",
+    name: "Verifica · fase 3",
+    status: "Superata",
+    finding: "Superati i percorsi nel browser su computer e dispositivi mobili e i controlli su aree interattive da 44 px, focus, axe, lint, test, tipi e compilazione.",
   },
   {
-    name: "Browser feedback round 4",
-    status: "Critiqued",
-    finding: "Nine annotated UI gaps plus relationship persistence and first-run setup were tested independently.",
+    name: "Revisione nel browser · fase 4",
+    status: "Revisionata",
+    finding: "Sono stati verificati separatamente nove problemi annotati nell’interfaccia, il salvataggio delle relazioni e la configurazione al primo avvio.",
   },
   {
-    name: "Repair round 5",
-    status: "Passed",
-    finding: "Real-browser save/reload, all-column reordering, sticky editor, dirty-close guard, onboarding, and 2px selection pass.",
+    name: "Correzioni · fase 5",
+    status: "Superata",
+    finding: "Verificati nel browser salvataggio e ricaricamento, riordino di tutte le colonne, intestazione fissa dell’editor, avviso per modifiche non salvate, configurazione iniziale e contorno di selezione di 2 px.",
   },
   {
-    name: "Local media round 6",
-    status: "Critiqued",
-    finding: "An early demo-media bundle shipped with IndexedDB storage and the archive menu; later review established that multimedia must come only from the user.",
+    name: "Contenuti multimediali locali · fase 6",
+    status: "Revisionata",
+    finding: "Una prima versione includeva contenuti multimediali dimostrativi, salvataggio in IndexedDB e il menu dell’archivio. Una revisione successiva ha stabilito che i file multimediali devono provenire solo dall’utente.",
   },
   {
-    name: "Portability round 7",
-    status: "Passed",
-    finding: "Downloaded .albero matched its Blob byte-for-byte; destructive clear/import/reload restored 21 assets with identical SHA-256 inventories.",
+    name: "Portabilità · fase 7",
+    status: "Superata",
+    finding: "Il file .albero scaricato coincideva byte per byte con il Blob. Dopo aver cancellato i dati locali, l’importazione e il ricaricamento hanno ripristinato 21 file con gli stessi hash SHA-256.",
   },
   {
-    name: "Modal feedback round 8",
-    status: "Passed",
-    finding: "Icon-only dismissal, portrait photo controls, archive-data cleanup, dirty-close protection, and exact desktop/mobile browser checks pass.",
+    name: "Revisione delle finestre di dialogo · fase 8",
+    status: "Superata",
+    finding: "Verificati la chiusura tramite icona, i comandi del ritratto, la pulizia dei dati d’archivio, l’avviso per modifiche non salvate e le dimensioni esatte della finestra del browser su computer e dispositivi mobili.",
   },
   {
-    name: "Modal/media correction round 9",
-    status: "Passed",
-    finding: "All close controls are gone; local multimedia add/remove, dirty Escape/backdrop, and confirmed person deletion pass in real browsers.",
+    name: "Correzioni delle finestre e dei contenuti multimediali · fase 9",
+    status: "Superata",
+    finding: "Sono stati rimossi tutti i pulsanti di chiusura. Verificati nel browser l’aggiunta e la rimozione di file locali, l’avviso per modifiche non salvate premendo Esc o facendo clic sullo sfondo e l’eliminazione di una persona dopo conferma.",
   },
   {
-    name: "Zero-media release round 10",
-    status: "Passed",
-    finding: "The standalone artifact contains zero multimedia files or payloads; user uploads remain in IndexedDB and portable .albero archives.",
+    name: "Rilascio senza contenuti multimediali inclusi · fase 10",
+    status: "Superata",
+    finding: "Il file autonomo non contiene file o dati multimediali. I file caricati dagli utenti restano in IndexedDB e negli archivi portatili .albero.",
   },
 ];
 
 const goldReferences = [
   {
-    alt: "Approved Diagramma desktop reference",
+    alt: "Riferimento approvato del Diagramma su computer",
     height: 963,
-    label: "Diagramma · desktop",
+    label: "Diagramma · computer",
     src: "/qa/gold-diagram-desktop.png",
     width: 1633,
   },
   {
-    alt: "Approved Tabella desktop reference",
+    alt: "Riferimento approvato della Tabella su computer",
     height: 963,
-    label: "Tabella · desktop",
+    label: "Tabella · computer",
     src: "/qa/gold-table-desktop.png",
     width: 1633,
   },
   {
-    alt: "Approved Timeline desktop reference",
+    alt: "Riferimento approvato della Cronologia su computer",
     height: 963,
-    label: "Timeline · desktop",
+    label: "Cronologia · computer",
     src: "/qa/gold-timeline-desktop.png",
     width: 1633,
   },
   {
-    alt: "Approved Diagramma mobile reference",
+    alt: "Riferimento approvato del Diagramma su dispositivo mobile",
     height: 1846,
-    label: "Diagramma · mobile",
+    label: "Diagramma · dispositivo mobile",
     src: "/qa/gold-diagram-mobile.png",
     width: 852,
   },
   {
-    alt: "Approved Timeline mobile reference",
+    alt: "Riferimento approvato della Cronologia su dispositivo mobile",
     height: 1846,
-    label: "Timeline · mobile",
+    label: "Cronologia · dispositivo mobile",
     src: "/qa/gold-timeline-mobile.png",
     width: 852,
   },
@@ -117,26 +117,26 @@ export default function ProgressPage() {
         <header className="flex flex-wrap items-end justify-between gap-5 border-b border-[#cbd5cb] pb-6">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#65746a]">
-              QA-only progress
+              Avanzamento delle verifiche
             </p>
             <h1 className="mt-2 font-[family-name:var(--font-display)] text-4xl text-[#17351f] sm:text-5xl">
-              Family archive redesign
+              Riprogettazione dell’archivio di famiglia
             </h1>
           </div>
           <p className="max-w-xl text-sm leading-6 text-[#526158]">
-            Live comparison surface for the baseline, approved references, implementation renders,
-            critic gaps, and round history. This route is intentionally absent from product
-            navigation.
+            Confronto tra la versione iniziale, i riferimenti approvati e le schermate della versione
+            realizzata, con i problemi rilevati e la cronologia delle verifiche. La pagina è
+            accessibile dal suo indirizzo diretto.
           </p>
         </header>
 
         <section aria-labelledby="status-heading" className="py-8">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <h2 className="text-lg font-semibold" id="status-heading">
-              Current status
+              Stato attuale
             </h2>
             <span className="rounded-full bg-[#fff0d8] px-3 py-1.5 text-xs font-semibold text-[#8b5b12]">
-              Candidate wins · modal/media verified
+              Nuova versione preferita · finestre e contenuti multimediali verificati
             </span>
           </div>
           <div className="mt-4 grid gap-px overflow-hidden rounded-2xl border border-[#cbd5cb] bg-[#cbd5cb] md:grid-cols-2 xl:grid-cols-4">
@@ -156,15 +156,15 @@ export default function ProgressPage() {
 
         <section aria-labelledby="comparison-heading">
           <h2 className="text-lg font-semibold" id="comparison-heading">
-            Baseline → gold → latest
+            Versione iniziale → riferimento approvato → ultima versione
           </h2>
           <div className="mt-4 grid gap-5 xl:grid-cols-3">
             <figure className="overflow-hidden rounded-2xl border border-[#cbd5cb] bg-white">
               <div className="border-b border-[#dfe5df] px-4 py-3 text-sm font-semibold">
-                Baseline · 1440×900
+                Versione iniziale · 1440×900
               </div>
               <Image
-                alt="Original family archive desktop baseline"
+                alt="Versione iniziale dell’archivio di famiglia su computer"
                 className="h-auto w-full"
                 height={900}
                 priority
@@ -175,10 +175,10 @@ export default function ProgressPage() {
 
             <figure className="overflow-hidden rounded-2xl border border-[#cbd5cb] bg-white">
               <div className="border-b border-[#dfe5df] px-4 py-3 text-sm font-semibold">
-                Gold · Diagramma
+                Riferimento approvato · Diagramma
               </div>
               <Image
-                alt="Approved Diagramma desktop reference"
+                alt="Riferimento approvato del Diagramma su computer"
                 className="h-auto w-full"
                 height={963}
                 priority
@@ -189,10 +189,10 @@ export default function ProgressPage() {
 
             <figure className="overflow-hidden rounded-2xl border border-[#cbd5cb] bg-white">
               <div className="border-b border-[#dfe5df] px-4 py-3 text-sm font-semibold">
-                Latest · 1440×900
+                Ultima versione · 1440×900
               </div>
               <Image
-                alt="Latest browser-tested Diagramma render"
+                alt="Ultima schermata del Diagramma verificata nel browser"
                 className="h-auto w-full"
                 height={900}
                 priority
@@ -205,43 +205,47 @@ export default function ProgressPage() {
 
         <section aria-labelledby="score-heading" className="py-8">
           <h2 className="text-lg font-semibold" id="score-heading">
-            Blind A/B scorecard
+            Risultati del test A/B in cieco
           </h2>
           <div className="mt-4 overflow-hidden rounded-2xl border border-[#cbd5cb] bg-white">
             <div className="grid grid-cols-[1fr_auto] gap-4 border-b border-[#dfe5df] px-5 py-4 text-sm">
-              <span>Hierarchy and first-viewport usefulness</span>
-              <strong className="text-[#0c3b24]">Candidate · 3/3</strong>
+              <span>Gerarchia visiva e utilità della schermata iniziale</span>
+              <strong className="text-[#0c3b24]">Nuova versione · 3/3</strong>
             </div>
             <div className="grid grid-cols-[1fr_auto] gap-4 border-b border-[#dfe5df] px-5 py-4 text-sm">
-              <span>Three-view discoverability</span>
-              <strong className="text-[#0c3b24]">Candidate · 3/3</strong>
+              <span>Facilità di trovare le tre viste</span>
+              <strong className="text-[#0c3b24]">Nuova versione · 3/3</strong>
             </div>
             <div className="grid grid-cols-[1fr_auto] gap-4 border-b border-[#dfe5df] px-5 py-4 text-sm">
-              <span>Diagram comprehension</span>
-              <strong className="text-[#0c3b24]">Candidate after repair</strong>
+              <span>Comprensione del Diagramma</span>
+              <strong className="text-[#0c3b24]">Versione corretta</strong>
             </div>
             <div className="grid grid-cols-[1fr_auto] gap-4 border-b border-[#dfe5df] px-5 py-4 text-sm">
-              <span>Timeline navigation</span>
-              <strong className="text-[#0c3b24]">Candidate after repair</strong>
+              <span>Navigazione nella Cronologia</span>
+              <strong className="text-[#0c3b24]">Versione corretta</strong>
             </div>
             <div className="grid grid-cols-[1fr_auto] gap-4 px-5 py-4 text-sm">
-              <span>Visual polish and responsive quality</span>
-              <strong className="text-[#0c3b24]">Candidate</strong>
+              <span>Finitura visiva e adattamento alle dimensioni dello schermo</span>
+              <strong className="text-[#0c3b24]">Nuova versione</strong>
             </div>
           </div>
           <p className="mt-4 text-sm leading-6 text-[#526158]">
-            Largest critic gaps closed: diagram framing, timeline density, relationship removal
-            after reload, all-column reordering, editor close protection, package reference closure,
-            toolbar stacking, portrait-based photo editing, archive-data cleanup, invalid-file rollback,
-            Esc/backdrop-only modal dismissal, local multimedia editing, and confirmed person deletion.
-            Remaining intentional delta: the gold mobile concepts use a taller canvas; the product keeps the 390×844 page
-            contained and gives the visualization its own pan/scroll surface.
+            Le correzioni principali riguardano l’inquadratura del Diagramma, la densità della
+            Cronologia, la rimozione delle relazioni anche dopo il ricaricamento, il riordino
+            delle colonne, l’avviso per modifiche non salvate, la coerenza dei riferimenti nel file
+            .albero e la disposizione della barra degli strumenti. Sono stati corretti anche la
+            modifica delle foto dal ritratto, la pulizia dei dati dell’archivio, il ripristino in
+            caso di file non valido, la chiusura delle finestre con Esc o dallo sfondo, la modifica
+            dei file multimediali locali e l’eliminazione di una persona dopo conferma.
+            I riferimenti approvati per dispositivi mobili usano un’area più alta. Nella versione
+            realizzata, la pagina rientra nei 390×844 pixel e permette di spostarsi e scorrere
+            all’interno della visualizzazione.
           </p>
         </section>
 
         <section aria-labelledby="latest-heading" className="pb-8">
           <h2 className="text-lg font-semibold" id="latest-heading">
-            Latest exact-size renders
+            Ultime schermate alle dimensioni di verifica
           </h2>
           <div className="mt-4 grid gap-5 lg:grid-cols-3">
             <figure className="overflow-hidden rounded-2xl border border-[#cbd5cb] bg-white">
@@ -249,7 +253,7 @@ export default function ProgressPage() {
                 Tabella · 1440×900
               </figcaption>
               <Image
-                alt="Latest browser-tested Tabella desktop render"
+                alt="Ultima schermata della Tabella verificata nel browser su computer"
                 className="h-auto w-full"
                 height={900}
                 src="/qa/latest-table-desktop.png"
@@ -258,10 +262,10 @@ export default function ProgressPage() {
             </figure>
             <figure className="overflow-hidden rounded-2xl border border-[#cbd5cb] bg-white">
               <figcaption className="border-b border-[#dfe5df] px-4 py-3 text-sm font-semibold">
-                Timeline · 1440×900
+                Cronologia · 1440×900
               </figcaption>
               <Image
-                alt="Latest browser-tested Timeline desktop render"
+                alt="Ultima schermata della Cronologia verificata nel browser su computer"
                 className="h-auto w-full"
                 height={900}
                 src="/qa/latest-timeline-desktop.png"
@@ -274,7 +278,7 @@ export default function ProgressPage() {
                   Diagramma · 390×844
                 </figcaption>
                 <Image
-                  alt="Latest browser-tested Diagramma mobile render"
+                  alt="Ultima schermata del Diagramma verificata nel browser su dispositivo mobile"
                   className="h-auto w-full"
                   height={844}
                   src="/qa/latest-diagram-mobile.png"
@@ -283,10 +287,10 @@ export default function ProgressPage() {
               </figure>
               <figure className="overflow-hidden rounded-2xl border border-[#cbd5cb] bg-white">
                 <figcaption className="border-b border-[#dfe5df] px-3 py-3 text-xs font-semibold">
-                  Timeline · 390×844
+                  Cronologia · 390×844
                 </figcaption>
                 <Image
-                  alt="Latest browser-tested Timeline mobile render"
+                  alt="Ultima schermata della Cronologia verificata nel browser su dispositivo mobile"
                   className="h-auto w-full"
                   height={844}
                   src="/qa/latest-timeline-mobile.png"
@@ -301,24 +305,25 @@ export default function ProgressPage() {
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold" id="media-evidence-heading">
-                Local media and portable archive
+                Contenuti multimediali locali e archivio portatile
               </h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-[#526158]">
-                Browser proof: user-selected portrait and audio playback, then one-file export,
-                destructive local clear, import, reload, and byte-identical asset recovery.
+                Nel browser sono stati verificati la selezione del ritratto e la riproduzione audio.
+                Dopo l’esportazione in un singolo file e la cancellazione dei dati locali,
+                l’importazione e il ricaricamento hanno ripristinato i file byte per byte.
               </p>
             </div>
             <span className="rounded-full bg-[#e5f4e8] px-3 py-1.5 text-xs font-semibold text-[#0c3b24]">
-              User-owned media · IndexedDB · 0 bundled files
+              Contenuti dell’utente · IndexedDB · 0 file inclusi
             </span>
           </div>
           <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
             <figure className="overflow-hidden rounded-2xl border border-[#cbd5cb] bg-white">
               <figcaption className="border-b border-[#dfe5df] px-4 py-3 text-sm font-semibold">
-                Person sheet · local portrait and audio
+                Scheda della persona · ritratto e audio locali
               </figcaption>
               <Image
-                alt="Final desktop person sheet with a local portrait and two audio players"
+                alt="Scheda finale su computer con un ritratto locale e due lettori audio"
                 className="h-auto w-full"
                 height={900}
                 src="/qa/latest-media-desktop.png"
@@ -327,10 +332,10 @@ export default function ProgressPage() {
             </figure>
             <figure className="overflow-hidden rounded-2xl border border-[#cbd5cb] bg-white">
               <figcaption className="border-b border-[#dfe5df] px-4 py-3 text-sm font-semibold">
-                Archive menu · 390×844
+                Menu dell’archivio · 390×844
               </figcaption>
               <Image
-                alt="Final mobile archive import and export menu"
+                alt="Menu finale per importare ed esportare l’archivio su dispositivo mobile"
                 className="h-auto w-full"
                 height={844}
                 src="/qa/latest-archive-mobile.png"
@@ -344,25 +349,27 @@ export default function ProgressPage() {
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold" id="modal-evidence-heading">
-                Modal dismissal and multimedia
+                Chiusura delle finestre e contenuti multimediali
               </h2>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-[#526158]">
-                Product modals now dismiss only through Escape or the backdrop. The portrait
-                remains the photo surface, while the restored local multimedia panel supports
-                add, remove, and undo in both create and edit flows without legacy attachment fields.
+                Le finestre di dialogo si chiudono solo premendo Esc o facendo clic sullo sfondo.
+                La foto si gestisce dal ritratto. Il pannello ripristinato per i contenuti
+                multimediali locali permette di aggiungere e rimuovere file o annullare la rimozione,
+                sia durante la creazione sia durante la modifica, senza usare i vecchi campi per
+                gli allegati.
               </p>
             </div>
             <span className="rounded-full bg-[#e5f4e8] px-3 py-1.5 text-xs font-semibold text-[#0c3b24]">
-              48 tests · 0 serious axe · 0 overflow
+              48 test · 0 problemi gravi rilevati da axe · 0 fuoriuscite dall’area visibile
             </span>
           </div>
           <div className="mt-4 grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
             <figure className="overflow-hidden rounded-2xl border border-[#cbd5cb] bg-white">
               <figcaption className="border-b border-[#dfe5df] px-4 py-3 text-sm font-semibold">
-                Person editor · 1304×1035
+                Editor della scheda · 1304×1035
               </figcaption>
               <Image
-                alt="Verified desktop editor with no close control and local multimedia editing"
+                alt="Editor verificato su computer, senza pulsante di chiusura e con modifica dei file multimediali locali"
                 className="h-auto w-full"
                 height={1035}
                 src="/qa/latest-modal-desktop.png"
@@ -371,10 +378,10 @@ export default function ProgressPage() {
             </figure>
             <figure className="overflow-hidden rounded-2xl border border-[#cbd5cb] bg-white">
               <figcaption className="border-b border-[#dfe5df] px-4 py-3 text-sm font-semibold">
-                Person editor · 390×844
+                Editor della scheda · 390×844
               </figcaption>
               <Image
-                alt="Verified mobile editor with staged local multimedia and no close control"
+                alt="Editor verificato su dispositivo mobile, con file multimediali locali in attesa di salvataggio e senza pulsante di chiusura"
                 className="h-auto w-full"
                 height={844}
                 src="/qa/latest-modal-mobile.png"
@@ -386,7 +393,7 @@ export default function ProgressPage() {
 
         <details className="rounded-2xl border border-[#cbd5cb] bg-white">
           <summary className="cursor-pointer px-5 py-4 font-semibold outline-none focus-visible:ring-2 focus-visible:ring-[#0c3b24]">
-            All approved references
+            Tutti i riferimenti approvati
           </summary>
           <div className="grid gap-5 border-t border-[#dfe5df] p-5 lg:grid-cols-2">
             {goldReferences.map((reference) => (

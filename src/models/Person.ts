@@ -2,6 +2,13 @@ export type PersonId = string;
 export type PersonDateValue = string | null;
 export type PersonSex = "female" | "male" | "nonbinary" | "unknown" | null;
 
+export const PERSON_SEX_LABELS: Record<NonNullable<PersonSex>, string> = {
+  female: "Femminile",
+  male: "Maschile",
+  nonbinary: "Non binario",
+  unknown: "Sconosciuto",
+};
+
 export interface PersonInput {
   id?: PersonId;
   name: string;
@@ -20,6 +27,8 @@ export interface PersonInput {
   instruction?: string | null;
   tags?: string[] | null;
   parentIds?: PersonId[];
+  biologicalParentIds?: PersonId[];
+  diagramParentIds?: PersonId[];
   childIds?: PersonId[];
   partnerIds?: PersonId[];
   createdAt?: string;
@@ -44,6 +53,8 @@ export interface PersonRecord {
   instruction: string | null;
   tags: string[] | null;
   parentIds: PersonId[];
+  biologicalParentIds?: PersonId[];
+  diagramParentIds?: PersonId[];
   childIds: PersonId[];
   partnerIds: PersonId[];
   createdAt: string;
@@ -120,6 +131,8 @@ export class Person {
   instruction: string | null;
   tags: string[] | null;
   parentIds: PersonId[];
+  biologicalParentIds?: PersonId[];
+  diagramParentIds?: PersonId[];
   childIds: PersonId[];
   partnerIds: PersonId[];
   createdAt: string;
@@ -145,6 +158,12 @@ export class Person {
     this.instruction = normalizeText(input.instruction);
     this.tags = normalizeStringList(input.tags);
     this.parentIds = normalizeIdList(input.parentIds);
+    if (Array.isArray(input.biologicalParentIds)) {
+      this.biologicalParentIds = normalizeIdList(input.biologicalParentIds);
+    }
+    if (Array.isArray(input.diagramParentIds)) {
+      this.diagramParentIds = normalizeIdList(input.diagramParentIds);
+    }
     this.childIds = normalizeIdList(input.childIds);
     this.partnerIds = normalizeIdList(input.partnerIds);
     this.createdAt = input.createdAt ?? now;
@@ -174,6 +193,8 @@ export class Person {
       instruction: this.instruction,
       tags: this.tags,
       parentIds: this.parentIds,
+      ...(this.biologicalParentIds === undefined ? {} : { biologicalParentIds: this.biologicalParentIds }),
+      ...(this.diagramParentIds === undefined ? {} : { diagramParentIds: this.diagramParentIds }),
       childIds: this.childIds,
       partnerIds: this.partnerIds,
       createdAt: this.createdAt,
