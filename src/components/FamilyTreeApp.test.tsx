@@ -209,6 +209,23 @@ describe("FamilyTreeApp", () => {
     ).toBeInTheDocument();
   });
 
+  it("opens the selected person's family, follows a relative and returns to the overview", async () => {
+    const user = userEvent.setup();
+    render(<FamilyTreeApp mode="visitor" />);
+    await user.click(await screen.findByRole("button", { name: /Nanni/i }));
+    const details = await screen.findByRole("dialog", { name: /Giovanni Rinaldi/ });
+    await user.click(within(details).getByRole("button", { name: "Famiglia vicina" }));
+
+    const family = await screen.findByRole("region", { name: /Famiglia di .*Giovanni Rinaldi/ });
+    const children = within(family).getByRole("region", { name: "Figli" });
+    await user.click(within(children).getByRole("button", { name: "Mostra la famiglia di Marco Rinaldi" }));
+    const current = await screen.findByRole("region", { name: "Famiglia di Marco Rinaldi" });
+    expect(within(current).getByRole("heading", { name: "Marco Rinaldi" })).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "Albero completo" }));
+    expect(current).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Nanni/i })).toBeInTheDocument();
+  });
+
   it("allows admin mode to add a person and reveal hidden table columns", async () => {
     const user = userEvent.setup();
 

@@ -1,8 +1,8 @@
-import { Position, type Edge, type Node } from "@xyflow/react";
+import { MarkerType, Position, type Edge, type Node } from "@xyflow/react";
 
 import type { FamilyJunctionNodeData, FamilyRouteEdgeData } from "@/components/FamilyFlowNodes";
 import type { PersonRecord } from "@/models/Person";
-import { getDiagramParentIds, getPersonDisplayName, getPersonShortName } from "@/utils/familyTree";
+import { getDiagramParentIds, getPersonDisplayName } from "@/utils/familyTree";
 
 export interface DiagramPosition {
   id: string;
@@ -37,12 +37,42 @@ export function getPartnerKey(left: string, right: string): string {
   return JSON.stringify(left <= right ? [left, right] : [right, left]);
 }
 
-export function getDiagramParentGroup(person: PersonRecord): string {
-  const ids = getDiagramParentIds(person);
-  if (ids.length === 2) {
-    return getPartnerKey(ids[0], ids[1]);
+function getSiblingGroups(people: PersonRecord[], positions: Map<string, DiagramPosition>): string[][] {
+  const neighbors = new Map<string, Set<string>>();
+  for (const person of people) {
+    for (const sibling of person.siblingIds ?? []) {
+      if (person.id === sibling || !positions.has(sibling)) continue;
+      const own = neighbors.get(person.id) ?? new Set<string>();
+      const other = neighbors.get(sibling) ?? new Set<string>();
+      own.add(sibling);
+      other.add(person.id);
+      neighbors.set(person.id, own);
+      neighbors.set(sibling, other);
+    }
   }
-  return ids.length === 1 ? JSON.stringify(ids) : "";
+  const groups: string[][] = [];
+  const visited = new Set<string>();
+  for (const id of neighbors.keys()) {
+    if (visited.has(id)) continue;
+    const group = [id];
+    visited.add(id);
+    for (let i = 0; i < group.length; i++) {
+      for (const sibling of neighbors.get(group[i])!) {
+        if (!visited.has(sibling)) { group.push(sibling); visited.add(sibling); }
+      }
+    }
+    if (group.every(member => neighbors.get(member)!.size === group.length - 1)) {
+      groups.push(group);
+    } else {
+      // Two half-siblings of one person need not be siblings of each other.
+      for (const member of group) {
+        for (const sibling of neighbors.get(member)!) {
+          if (member < sibling) groups.push([member, sibling]);
+        }
+      }
+    }
+  }
+  return groups;
 }
 
 function collectRelationships(people: PersonRecord[], positions: Map<string, DiagramPosition>) {
@@ -84,7 +114,7 @@ function collectRelationships(people: PersonRecord[], positions: Map<string, Dia
   return [...couples.values(), ...direct];
 }
 
-function reserveLanes(routes: RoutedRelationship[]): number {
+function reserveLanes(routes: { id: string; left: number; right: number; lane: number }[]): number {
   routes.sort((a, b) => a.left - b.left || a.right - b.right || a.id.localeCompare(b.id));
   const ends: { lane: number; end: number }[] = [];
 
@@ -138,7 +168,7 @@ export function buildFamilyRoutes(
   const byId = new Map(people.map((person) => [person.id, person]));
   const relationships = collectRelationships(people, positions);
   const { nodeWidth, nodeHeight, generationGap } = layout;
-  const markerWidth = layout.compact ? 136 : 152;
+  const markerWidth = 70;
   const outgoing = new Map<string, string[]>();
   for (const relation of relationships) {
     for (const parentId of relation.parents) {
@@ -172,6 +202,19 @@ export function buildFamilyRoutes(
     routesByRow[row].push({ ...relationship, row, parentXs, childXs, markerX, left, right, lane: 0 });
   }
 
+  const siblingBands = Array.from({length: rowCount}, () =>
+    [] as {id: string; members: string[]; left: number; right: number; lane: number}[],
+  );
+  for (const group of getSiblingGroups(people, positions)) {
+    const row = group.reduce((first, id) => Math.min(first, positions.get(id)!.row), Infinity);
+    const members = [...group].sort((a, b) => childCenter(a) - childCenter(b));
+    const id = `siblings-${encodeURIComponent(JSON.stringify([...members].sort()))}`;
+    siblingBands[row].push({
+      id, members, left: childCenter(members[0]), right: childCenter(members[members.length - 1]), lane: 0,
+    });
+  }
+  const cardsByRow = Array.from({length: rowCount}, () => [] as number[]);
+  for (const position of positions.values()) cardsByRow[position.row].push(position.x);
   const rowOffsets: number[] = [];
   let y = 0;
   let bottom = 0;
@@ -180,7 +223,8 @@ export function buildFamilyRoutes(
   let leftBound = 0;
   let rightBound = 0;
 
-  for (const routes of routesByRow) {
+  for (const [rank, routes] of routesByRow.entries()) {
+    y += reserveLanes(siblingBands[rank]) * 28;
     rowOffsets.push(y);
     const lanes = reserveLanes(routes);
     const occupied = nodeHeight + (lanes ? TRACK_PADDING + lanes * TRACK_HEIGHT : 0);
@@ -189,6 +233,38 @@ export function buildFamilyRoutes(
   }
 
   const yFor = (id: string) => rowOffsets[positions.get(id)!.row];
+  // Most edges lie entirely in the band between two consecutive generations.
+  // For a rank-skipping edge use a clear vertical gutter across the intervening rows.
+  function vertical(x: number, start: number, end: number, exitY = start, entryY = end): string {
+    const top = Math.min(exitY, entryY);
+    const bottom = Math.max(exitY, entryY);
+    let lo = 0, hi = rowOffsets.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (rowOffsets[mid] + nodeHeight <= top) lo = mid + 1;
+      else hi = mid;
+    }
+    if (lo === rowOffsets.length || rowOffsets[lo] >= bottom) return `V ${end}`;
+    const occupied: number[] = [];
+    for (let row = lo; row < rowCount && rowOffsets[row] < bottom; row++) {
+      for (const left of cardsByRow[row]) occupied.push(left);
+    }
+    if (!occupied.some(left => x > left - 5 && x < left + nodeWidth + 5)) return `V ${end}`;
+    occupied.sort((a, b) => a - b);
+    let left = occupied[0] - 5;
+    let right = occupied[0] + nodeWidth + 5;
+    for (const edge of occupied) {
+      if (edge - 5 > right) {
+        if (left <= x && x <= right) break;
+        left = edge - 5;
+      }
+      right = Math.max(right, edge + nodeWidth + 5);
+    }
+    const gutter = x - left < right - x ? left : right;
+    leftBound = Math.min(leftBound, gutter);
+    rightBound = Math.max(rightBound, gutter);
+    return `V ${exitY} H ${gutter} V ${entryY} H ${x} V ${end}`;
+  }
   const edge = (
     route: RoutedRelationship,
     name: string,
@@ -205,6 +281,9 @@ export function buildFamilyRoutes(
       target,
       sourceHandle: "bottom",
       targetHandle: "top",
+      markerEnd: name === "parent" || name.startsWith("child-")
+        ? { type: MarkerType.ArrowClosed, width: 5, height: 5, color }
+        : undefined,
       style: { stroke: color, strokeWidth: 2.3, strokeDasharray: dashed ? "5 4" : undefined },
       data: { branchId: route.id, path } satisfies FamilyRouteEdgeData,
       focusable: false,
@@ -222,7 +301,7 @@ export function buildFamilyRoutes(
         const [startX] = route.parentXs;
         const [targetX] = route.childXs;
         edge(route, "parent", positions.get(parent)!.id, positions.get(child)!.id,
-          `M ${startX} ${yFor(parent) + nodeHeight} V ${trackY + 19} H ${targetX} V ${yFor(child)}`,
+          `M ${startX} ${yFor(parent) + nodeHeight} V ${trackY + 19} H ${targetX} ${vertical(targetX, trackY + 19, yFor(child), trackY + 19, yFor(child) - 4)}`,
           SINGLE_PARENT_COLOR);
         return;
       }
@@ -231,11 +310,10 @@ export function buildFamilyRoutes(
       const railY = trackY + 46;
       const { markerX } = route;
       const color = BRANCH_COLORS[index % BRANCH_COLORS.length];
-      const parentRecords = route.parents.map((id) => byId.get(id)!);
-      const parentNames = parentRecords.map(getPersonDisplayName);
-      const childLabel = route.children.length
-        ? ` · ${route.children.length} ${route.children.length === 1 ? "figlio" : "figli"}`
-        : "";
+      const parentNames = route.parents.map(id => getPersonDisplayName(byId.get(id)!));
+      const label = route.children.length
+        ? `${route.children.length} ${route.children.length === 1 ? "figlio" : "figli"}`
+        : "Partner";
       const forkId = `${route.id}-fork`;
       const branchSize = { width: markerWidth, height: JUNCTION_HEIGHT };
       const markerLeft = markerX - markerWidth / 2;
@@ -252,18 +330,18 @@ export function buildFamilyRoutes(
         data: {
           branchId: route.id,
           color,
-          label: parentRecords.map(getPersonShortName).join(" + "),
-          title: `${parentNames.join(" e ")}${childLabel}`,
+          label,
+          title: `${parentNames.join(" e ")} · ${label}`,
         } satisfies FamilyJunctionNodeData,
       });
       // The two parent feeds have their own heights even when their projections overlap.
       route.parents.forEach((parent, parentIndex) => {
         const parentX = route.parentXs[parentIndex];
-        const incomingX = markerX + (parentIndex === 0 ? -markerWidth / 4 : markerWidth / 4);
+        const incomingX = markerX + (parentX < route.parentXs[1 - parentIndex] ? -markerWidth / 4 : markerWidth / 4);
         const fromY = yFor(parent) + nodeHeight;
         const incomingY = trackY + (parentIndex === 0 ? 2 : 9);
         edge(route, `feed-${parentIndex}`, positions.get(parent)!.id, route.id,
-          `M ${parentX} ${fromY} V ${incomingY} H ${incomingX} V ${markerY}`,
+          `M ${parentX} ${fromY} ${vertical(parentX, fromY, incomingY, fromY + 4)} H ${incomingX} V ${markerY}`,
           route.partners ? "#a66213" : color, route.partners);
       });
 
@@ -297,9 +375,38 @@ export function buildFamilyRoutes(
         const begin = childIndex === leftChild || childIndex === rightChild
           ? `M ${markerX} ${railY} H ${x}`
           : `M ${x} ${railY}`;
-        edge(route, `child-${childIndex}`, forkId, positions.get(child)!.id, `${begin} V ${yFor(child)}`, color);
+        edge(route, `child-${childIndex}`, forkId, positions.get(child)!.id, `${begin} ${vertical(x, railY, yFor(child), railY, yFor(child) - 4)}`, color);
       });
     });
+  }
+  for (const [row, bands] of siblingBands.entries()) {
+    for (const { id: branchId, lane, members: ordered } of bands) {
+      const first = ordered[0];
+      const last = ordered[ordered.length - 1];
+      const railY = rowOffsets[row] - 10 - lane * 28;
+      const color = "#176879";
+      for (let i = 1; i < ordered.length; i++) {
+        const other = ordered[i];
+        const x = childCenter(other);
+        const start = i === 1
+          ? `M ${childCenter(first)} ${yFor(first)} ${vertical(childCenter(first), yFor(first), railY, yFor(first) - 4)}`
+          : `M ${childCenter(ordered[i - 1])} ${railY}`;
+        const path = `${start} H ${x} ${vertical(x, railY, yFor(other), railY, yFor(other) - 4)}`;
+        edges.push({
+          id: `${branchId}-${i}`, type: "familyRoute",
+          source: positions.get(first)!.id, target: positions.get(other)!.id,
+          sourceHandle: "bottom", targetHandle: "top", focusable: false,
+          style: {stroke: color, strokeWidth: 2.2, strokeDasharray: "2 4", strokeLinecap: "round"},
+          data: {
+            branchId, path,
+            ...(i === 1 ? { annotation: {
+              x: (childCenter(first) + childCenter(last)) / 2, y: railY - 4,
+              label: "Fratelli e sorelle",
+            } } : {}),
+          } satisfies FamilyRouteEdgeData,
+        });
+      }
+    }
   }
   return { bottom, edges, leftBound, nodes, rightBound, rowOffsets };
 }

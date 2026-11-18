@@ -50,6 +50,17 @@ export function getBiologicalParentIds(person: PersonRecord): string[] {
   return person.biologicalParentIds ?? person.parentIds.slice(0, 2);
 }
 
+export function getSiblingIds(person: PersonRecord, peopleById: ReadonlyMap<string, PersonRecord>): string[] {
+  const siblings = new Set(person.siblingIds);
+  for (const parentId of person.parentIds) {
+    for (const childId of peopleById.get(parentId)?.childIds ?? []) {
+      siblings.add(childId);
+    }
+  }
+  siblings.delete(person.id);
+  return [...siblings].filter((id) => peopleById.has(id));
+}
+
 export function getDiagramParentIds(person: PersonRecord): string[] {
   if (person.parentIds.length <= 2) {
     return person.parentIds;
@@ -110,6 +121,8 @@ export function reconcilePersonRelationships(
   const parentIdSet = new Set(parentIds);
   const childIdSet = new Set(childIds);
   const partnerIdSet = new Set(partnerIds);
+  const siblingIds = cleanReferenceList(nextPerson.id, nextPerson.siblingIds ?? [], validIds);
+  const siblingIdSet = new Set(siblingIds);
 
   const reconciledPeople = currentPeople
     .filter((person) => person.id !== nextPerson.id)
@@ -128,6 +141,9 @@ export function reconcilePersonRelationships(
 
       return {
         ...cleanParentSelections(person, parentIdsForPerson),
+        siblingIds: siblingIdSet.has(person.id)
+          ? upsertReference(person.siblingIds ?? [], nextPerson.id)
+          : person.siblingIds?.filter((id) => id !== nextPerson.id),
         childIds: parentIdSet.has(person.id)
           ? upsertReference(childIdsForPerson, nextPerson.id)
           : childIdsForPerson,
@@ -143,6 +159,7 @@ export function reconcilePersonRelationships(
       ...cleanParentSelections(nextPerson, parentIds),
       childIds,
       partnerIds,
+      siblingIds,
     },
   ];
 }
@@ -179,6 +196,9 @@ export function normalizeFamilyTree(
     person.parentIds = cleanReferenceList(person.id, person.parentIds, validIds, true);
     person.childIds = cleanReferenceList(person.id, person.childIds, validIds);
     person.partnerIds = cleanReferenceList(person.id, person.partnerIds, validIds);
+    if (person.siblingIds) {
+      person.siblingIds = cleanReferenceList(person.id, person.siblingIds, validIds);
+    }
   }
 
   for (const person of peopleById.values()) {
@@ -202,13 +222,18 @@ export function normalizeFamilyTree(
         partner.partnerIds = upsertReference(partner.partnerIds, person.id);
       }
     }
+    for (const siblingId of person.siblingIds ?? []) {
+      const sibling = peopleById.get(siblingId)!;
+      sibling.siblingIds = upsertReference(sibling.siblingIds ?? [], person.id);
+    }
   }
 
   const people = sortPeople(
-    Array.from(peopleById.values()).map((person) => ({
+    Array.from(peopleById.values()).map(({ siblingIds, ...person }) => ({
       ...cleanParentSelections(person, cleanReferenceList(person.id, person.parentIds, validIds, true)),
       childIds: cleanReferenceList(person.id, person.childIds, validIds),
       partnerIds: cleanReferenceList(person.id, person.partnerIds, validIds),
+      ...(siblingIds?.length ? { siblingIds: siblingIds.sort((a, b) => a.localeCompare(b)) } : {}),
     })),
   );
 
@@ -314,14 +339,14 @@ export function getFamilyTreeIssues({ people }: FamilyTreeSnapshot): FamilyTreeI
     });
   }
 
-  const isolated = people.filter(({ parentIds, childIds, partnerIds }) =>
-    parentIds.length === 0 && childIds.length === 0 && partnerIds.length === 0,
+  const isolated = people.filter(({ parentIds, childIds, partnerIds, siblingIds }) =>
+    parentIds.length === 0 && childIds.length === 0 && partnerIds.length === 0 && !siblingIds?.length,
   );
   if (isolated.length > 0) {
     issues.push({
       id: "isolated",
       title: "Persone senza relazioni",
-      message: "Queste persone non hanno genitori, figli o partner collegati nell’archivio.",
+      message: "Queste persone non hanno legami familiari registrati nell’archivio.",
       personIds: isolated.map(({ id }) => id),
     });
   }
@@ -588,6 +613,7 @@ export function matchesPersonQuery(person: PersonRecord, query: string): boolean
   }
 
   const haystack = [
+    getPersonDisplayName(person),
     person.name,
     person.knownAs,
     person.surname,

@@ -143,6 +143,29 @@ describe("useFamilyTreeStore relationship persistence", () => {
     expect(getFamilyTreeIssues(reopened.current.snapshot!).map(({ id }) => id)).not.toContain("diagram-parents");
   });
 
+  it("persists replacing and deleting explicitly recorded siblings in both directions", async () => {
+    new LocalStorageDB().save(seedFamilyTree);
+    const { result } = renderHook(() => useFamilyTreeStore());
+    await waitFor(() => expect(result.current.snapshot).not.toBeNull());
+    const person = findPerson(result.current.snapshot!, "p2");
+    await act(async () => {
+      await result.current.upsertPerson({ ...person, siblingIds: ["p6"] });
+    });
+    expect(findPerson(result.current.snapshot!, "p6").siblingIds).toEqual(["p2"]);
+    await act(async () => {
+      await result.current.upsertPerson({ ...person, siblingIds: ["p5"] });
+    });
+    const { result: reopened } = renderHook(() => useFamilyTreeStore());
+    await waitFor(() => expect(reopened.current.snapshot).not.toBeNull());
+    const reloaded = reopened.current.snapshot!;
+    expect(findPerson(reloaded, "p2").siblingIds).toEqual(["p5"]);
+    expect(findPerson(reloaded, "p5").siblingIds).toEqual(["p2"]);
+    expect(findPerson(reloaded, "p6").siblingIds).toBeUndefined();
+    expect(findPerson(reloaded, "p2").parentIds).toEqual(person.parentIds);
+    await act(async () => { await reopened.current.deletePerson("p5"); });
+    expect(findPerson(database.snapshot!, "p2").siblingIds).toBeUndefined();
+  });
+
   it("removes an obsolete diagram choice when the corresponding parent deletes the child link", async () => {
     new LocalStorageDB().save(seedFamilyTree);
     const { result } = renderHook(() => useFamilyTreeStore());

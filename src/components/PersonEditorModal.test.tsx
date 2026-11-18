@@ -230,6 +230,9 @@ describe("PersonEditorModal", () => {
     await user.click(screen.getByRole("button", { name: "Figli" }));
     await user.click(screen.getByRole("checkbox", { name: /Sofia Rinaldi/i }));
     await user.click(screen.getByRole("button", { name: "Figli" }));
+    await user.click(screen.getByRole("button", { name: "Fratelli e sorelle dichiarati" }));
+    await user.click(screen.getByRole("checkbox", { name: /Paolo Greco/i }));
+    await user.click(screen.getByRole("button", { name: "Fratelli e sorelle dichiarati" }));
 
     await user.click(screen.getByRole("button", { name: "Salva modifiche" }));
 
@@ -251,6 +254,7 @@ describe("PersonEditorModal", () => {
       parentIds: expect.arrayContaining(["p3"]),
       partnerIds: expect.arrayContaining(["p1", "p4"]),
       childIds: expect.arrayContaining(["p3", "p4", "p7"]),
+      siblingIds: ["p6"],
     });
     expect(onSave.mock.calls[0][1]).toEqual({
       mediaFiles: [],

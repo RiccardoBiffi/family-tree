@@ -5,6 +5,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import { ArchiveActions } from "@/components/ArchiveActions";
 import { ArchiveIcon } from "@/components/ArchiveIcon";
 import { ArchiveOnboarding } from "@/components/ArchiveOnboarding";
+import { FamilyFocusView, getDefaultFamilyPerson } from "@/components/FamilyFocusView";
 import { FamilyTreeIssues } from "@/components/FamilyTreeIssues";
 import { PeopleTable } from "@/components/PeopleTable";
 import {
@@ -128,6 +129,8 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
     deletePerson,
   } = useFamilyTreeStore();
   const [view, setView] = useState<AppView>("diagram");
+  const [diagramMode, setDiagramMode] = useState<"overview" | "family">("overview");
+  const [familyPersonId, setFamilyPersonId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(null);
   const [editorState, setEditorState] = useState<EditorState | null>(null);
@@ -250,7 +253,24 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
   const handleSelectPerson = useCallback((personId: string) => {
     setEditorState(null);
     setSelectedPersonId(personId);
+    setFamilyPersonId(personId);
   }, []);
+
+  const switchDiagramMode = (next: typeof diagramMode) => {
+    if (next === diagramMode) return;
+    if (!familyPersonId || !storedPeopleById.has(familyPersonId)) {
+      setFamilyPersonId(getDefaultFamilyPerson(people)?.id ?? null);
+    }
+    setDiagramMode(next);
+  };
+
+  const showFamily = (personId: string) => {
+    setFamilyPersonId(personId);
+    setSelectedPersonId(null);
+    setQuery("");
+    setView("diagram");
+    setDiagramMode("family");
+  };
 
   useEffect(() => {
     if (!snapshot) {
@@ -440,6 +460,7 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
       }
       setQuery("");
       setSelectedPersonId(null);
+      setFamilyPersonId(null);
       setEditorState(null);
       setIssuesDismissed(false);
       setIssuesOpen(false);
@@ -556,12 +577,37 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
         ) : null}
 
         {view === "diagram" ? (
+          <div aria-label="Visualizzazione del diagramma" className="flex shrink-0 justify-center border-b border-[#dce4dc] bg-[#f7f9f6] px-2 py-1" role="group">
+            {([["overview", "Albero completo"], ["family", "Famiglia vicina"]] as const).map(([id, label]) => (
+              <button
+                aria-pressed={diagramMode === id}
+                className={`min-h-11 rounded-lg px-4 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-[-2px] ${diagramMode === id ? "bg-[#e1ebdf] text-[#163e28]" : "text-[#536358] hover:bg-[#ecf1eb]"}`}
+                key={id}
+                onClick={() => switchDiagramMode(id)}
+                type="button"
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {view === "diagram" && diagramMode === "overview" ? (
           <TreeDiagramView
+            initialPersonId={familyPersonId}
             onSelectPerson={handleSelectPerson}
             people={people}
             photoUrls={photoUrls}
             query={deferredQuery}
             selectedPersonId={selectedPersonId}
+          />
+        ) : null}
+        {view === "diagram" && diagramMode === "family" ? (
+          <FamilyFocusView
+            onNavigate={showFamily}
+            onOpenPerson={handleSelectPerson}
+            peopleById={storedPeopleById}
+            personId={familyPersonId}
+            query={deferredQuery}
           />
         ) : null}
         {view === "table" ? (
@@ -620,6 +666,7 @@ export function FamilyTreeApp({ mode }: FamilyTreeAppProps) {
         <PersonModal
           media={activeMedia}
           onClose={() => setSelectedPersonId(null)}
+          onShowFamily={view === "diagram" && diagramMode === "family" ? undefined : showFamily}
           onEdit={
             isAdmin && selectedPerson ? handleEditPerson : undefined
           }

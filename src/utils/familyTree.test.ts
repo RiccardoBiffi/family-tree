@@ -7,6 +7,7 @@ import {
   extractYear,
   formatDateLabel,
   getLifeSpanLabel,
+  matchesPersonQuery,
   getPartnerComponents,
   getFamilyTreeIssues,
   validateFamilyTree,
@@ -105,4 +106,11 @@ describe("family tree coherence", () => {
     expect(getFamilyTreeIssues({ ...snapshot, people: [] }))
       .toEqual([expect.objectContaining({ id: "empty", personIds: [] })]);
   });
+});
+
+
+it("finds the full legal name when an archive also records a nickname", () => {
+  const record = new Person({ name: "Simone", knownAs: "Simo", surname: "Verdi" }).toRecord();
+  expect(matchesPersonQuery(record, "simone verdi")).toBe(true);
+  expect(matchesPersonQuery(record, "simo verdi")).toBe(true);
 });

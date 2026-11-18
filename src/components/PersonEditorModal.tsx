@@ -755,6 +755,12 @@ export function PersonEditorModal({
                 people={availableRelations}
                 selectedIds={draft.childIds}
               />
+              <RelationDropdown
+                label="Fratelli e sorelle dichiarati"
+                onChange={(nextIds) => updateDraft("siblingIds", nextIds)}
+                people={availableRelations}
+                selectedIds={draft.siblingIds ?? []}
+              />
             </div>
           </section>
 

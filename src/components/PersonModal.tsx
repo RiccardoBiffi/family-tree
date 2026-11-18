@@ -14,6 +14,7 @@ import {
   getLifeSpanLabel,
   getPersonDisplayName,
   getPersonShortName,
+  getSiblingIds,
 } from "@/utils/familyTree";
 
 interface PersonModalProps {
@@ -22,6 +23,7 @@ interface PersonModalProps {
   media?: readonly MediaAssetView[];
   onClose: () => void;
   onEdit?: (personId: string) => void;
+  onShowFamily?: (personId: string) => void;
 }
 
 function renderPeopleList(ids: string[], peopleById: Map<string, PersonRecord>): string {
@@ -42,6 +44,7 @@ export function PersonModal({
   media = [],
   onClose,
   onEdit,
+  onShowFamily,
 }: PersonModalProps) {
   const titleId = useId();
   const dialogRef = useDialogFocus<HTMLDivElement>(Boolean(person), onClose);
@@ -54,6 +57,7 @@ export function PersonModal({
   const biologicalIds = getBiologicalParentIds(person);
   const adoptiveIds = person.parentIds.filter((id) => !biologicalIds.includes(id));
   const diagramIds = getDiagramParentIds(person);
+  const siblingIds = getSiblingIds(person, peopleById);
 
   return (
     <div
@@ -100,15 +104,26 @@ export function PersonModal({
                 </h2>
                 <p className="mt-1 text-sm text-[#526158]">{getLifeSpanLabel(person)}</p>
               </div>
-              {onEdit ? (
-                <button
-                  className="min-h-11 rounded-xl border border-[#b9c5b8] bg-white px-4 text-sm font-medium text-[#17351f] outline-none transition hover:border-[#78907c] focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
-                  onClick={() => onEdit(person.id)}
-                  type="button"
-                >
-                  Modifica
-                </button>
-              ) : null}
+              <div className="flex flex-wrap gap-2">
+                {onShowFamily ? (
+                  <button
+                    className="min-h-11 rounded-xl border border-[#b9c5b8] bg-white px-4 text-sm font-medium text-[#17351f] hover:bg-[#edf3ed] focus-visible:outline-2"
+                    onClick={() => onShowFamily(person.id)}
+                    type="button"
+                  >
+                    Famiglia vicina
+                  </button>
+                ) : null}
+                {onEdit ? (
+                  <button
+                    className="min-h-11 rounded-xl border border-[#b9c5b8] bg-white px-4 text-sm font-medium text-[#17351f] outline-none transition hover:border-[#78907c] focus-visible:ring-2 focus-visible:ring-[#0c3b24] focus-visible:ring-offset-2"
+                    onClick={() => onEdit(person.id)}
+                    type="button"
+                  >
+                    Modifica
+                  </button>
+                ) : null}
+              </div>
             </div>
           </div>
         </header>
@@ -184,6 +199,12 @@ export function PersonModal({
                   <dt className="text-slate-500">Figli</dt>
                   <dd className="mt-1">{renderPeopleList(person.childIds, peopleById)}</dd>
                 </div>
+                {siblingIds.length > 0 ? (
+                  <div>
+                    <dt className="text-slate-500">Fratelli e sorelle</dt>
+                    <dd className="mt-1">{renderPeopleList(siblingIds, peopleById)}</dd>
+                  </div>
+                ) : null}
                 <div>
                   <dt className="text-slate-500">Partner</dt>
                   <dd className="mt-1">{renderPeopleList(person.partnerIds, peopleById)}</dd>

@@ -36,6 +36,7 @@ export interface PersonInput {
   diagramParentIds?: PersonId[];
   childIds?: PersonId[];
   partnerIds?: PersonId[];
+  siblingIds?: PersonId[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -62,6 +63,8 @@ export interface PersonRecord {
   diagramParentIds?: PersonId[];
   childIds: PersonId[];
   partnerIds: PersonId[];
+  /** Sibling links explicitly documented independently of any shared parents. */
+  siblingIds?: PersonId[];
   createdAt: string;
   updatedAt: string;
 }
@@ -143,6 +146,7 @@ export class Person {
   diagramParentIds?: PersonId[];
   childIds: PersonId[];
   partnerIds: PersonId[];
+  siblingIds: PersonId[];
   createdAt: string;
   updatedAt: string;
 
@@ -174,6 +178,7 @@ export class Person {
     }
     this.childIds = normalizeIdList(input.childIds);
     this.partnerIds = normalizeIdList(input.partnerIds);
+    this.siblingIds = normalizeIdList(input.siblingIds);
     this.createdAt = input.createdAt ?? now;
     this.updatedAt = input.updatedAt ?? now;
   }
@@ -205,6 +210,7 @@ export class Person {
       ...(this.diagramParentIds === undefined ? {} : { diagramParentIds: this.diagramParentIds }),
       childIds: this.childIds,
       partnerIds: this.partnerIds,
+      ...(this.siblingIds.length ? { siblingIds: this.siblingIds } : {}),
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
     };

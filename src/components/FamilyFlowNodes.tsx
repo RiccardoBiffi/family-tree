@@ -41,6 +41,7 @@ export interface FamilyJunctionNodeData extends Record<string, unknown> {
 export interface FamilyRouteEdgeData extends Record<string, unknown> {
   branchId: string;
   path: string;
+  annotation?: { x: number; y: number; label: string };
 }
 
 export interface FamilyTimelineNodeData extends Record<string, unknown> {
@@ -67,7 +68,7 @@ function PersonAvatar({
         aria-hidden="true"
         className={[
           "shrink-0 rounded-full border border-[#aab7a9] object-cover",
-          compact ? "h-8 w-8" : "h-11 w-11",
+          compact ? "h-6 w-6" : "h-8 w-8",
         ].join(" ")}
         decoding="async"
         src={photo}
@@ -80,7 +81,7 @@ function PersonAvatar({
       aria-hidden="true"
       className={[
         "flex shrink-0 items-center justify-center rounded-full border border-[#aab7a9] bg-[#eef2e8] font-bold tracking-[0.08em] text-[#17452d]",
-        compact ? "h-8 w-8 text-[9px]" : "h-11 w-11 text-xs",
+        compact ? "h-6 w-6 text-[9px]" : "h-7 w-7 text-xs",
       ].join(" ")}
     >
       <PersonGlyph
@@ -116,7 +117,7 @@ export function FamilyTreeNode({ data }: NodeProps) {
         className={[
           "nodrag nopan flex h-full w-full overflow-hidden rounded-xl border shadow-[0_6px_18px_rgba(20,53,36,0.08)]",
           nodeData.compact
-            ? "flex-col items-center justify-center gap-1 px-1.5 py-1.5 text-center"
+            ? "items-center justify-center gap-1 px-1.5 py-1.5 text-left"
             : "items-center gap-3 px-3 py-2.5 text-left",
           "transition-[border-color,box-shadow,background-color] focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[#17452d]/35 motion-reduce:transition-none",
           selected
@@ -134,18 +135,18 @@ export function FamilyTreeNode({ data }: NodeProps) {
         title={nodeData.ariaLabel}
         type="button"
       >
-        <PersonAvatar
+        {(interaction?.photoUrls?.get(nodeData.personId) || nodeData.photo || nodeData.sex) ? <PersonAvatar
           compact={nodeData.compact}
           photo={interaction?.photoUrls?.get(nodeData.personId) ?? nodeData.photo}
           sex={nodeData.sex}
-        />
+        /> : null}
         <span className="min-w-0 flex-1">
           <span
             className={[
               "block font-bold text-[#101712]",
               nodeData.compact
-                ? "line-clamp-2 text-[11px] leading-[13px]"
-                : "truncate text-[15px] leading-5",
+                ? "line-clamp-3 text-xs leading-[14px]"
+                : "line-clamp-3 text-sm leading-4",
             ].join(" ")}
           >
             {nodeData.displayLabel}
@@ -229,7 +230,7 @@ export function FamilyJunctionNode({ data }: NodeProps) {
   );
 }
 
-export function FamilyRouteEdge({ data, id, style }: EdgeProps) {
+export function FamilyRouteEdge({ data, id, style, markerEnd }: EdgeProps) {
   const interaction = useContext(FamilyTreeNodeContext);
   const route = data as FamilyRouteEdgeData | undefined;
   if (!route) {
@@ -237,12 +238,20 @@ export function FamilyRouteEdge({ data, id, style }: EdgeProps) {
   }
   const active = interaction?.highlightedBranchId === route.branchId;
   return (
-    <BaseEdge
-      id={id}
-      interactionWidth={0}
-      path={route.path}
-      style={active ? { ...style, strokeWidth: 4 } : style}
-    />
+    <>
+      <BaseEdge
+        id={id}
+        interactionWidth={0}
+        markerEnd={markerEnd}
+        path={route.path}
+        style={active ? { ...style, strokeWidth: 4 } : { ...style, opacity: interaction?.highlightedBranchId ? 0.24 : 1 }}
+      />
+      {route.annotation ? (
+        <text x={route.annotation.x} y={route.annotation.y} textAnchor="middle" fill="#0d5666" stroke="#fbfaf7" strokeWidth={4} paintOrder="stroke" fontSize={12} fontWeight={650}>
+          {route.annotation.label}
+        </text>
+      ) : null}
+    </>
   );
 }
 

@@ -20,7 +20,7 @@ import {
   exportAlberoPackage,
   importAlberoPackage,
 } from "@/utils/alberoPackage";
-import { normalizeFamilyTree } from "@/utils/familyTree";
+import { getFamilyTreeIssues, getSiblingIds, normalizeFamilyTree } from "@/utils/familyTree";
 
 beforeAll(() => {
   vi.stubGlobal("Blob", NodeBlob);
@@ -199,6 +199,35 @@ describe(".albero package", () => {
       { birthDate: "1960-03-06", deathDate: null },
     ]);
     expect(normalizeFamilyTree(imported.snapshot)).toEqual(imported.snapshot);
+  });
+
+  it("round-trips direct sibling links without inferring parentage or transitive siblings", async () => {
+    const source = {
+      ...seedFamilyTree,
+      people: [
+        new Person({ id: "a", name: "Ada", siblingIds: ["b"] }).toRecord(),
+        new Person({ id: "b", name: "Bruno", siblingIds: ["c"] }).toRecord(),
+        new Person({ id: "c", name: "Clara" }).toRecord(),
+      ],
+    };
+    const imported = await importAlberoPackage(await exportAlberoPackage(source, []));
+    const snapshot = normalizeFamilyTree(imported.snapshot);
+    const byId = new Map(snapshot.people.map((person) => [person.id, person]));
+    expect(getSiblingIds(byId.get("a")!, byId)).toEqual(["b"]);
+    expect(getSiblingIds(byId.get("b")!, byId)).toEqual(["a", "c"]);
+    expect(getSiblingIds(byId.get("c")!, byId)).toEqual(["b"]);
+    expect(snapshot.people.every((person) => !person.parentIds.length && !person.childIds.length)).toBe(true);
+    expect(getFamilyTreeIssues(snapshot)).toEqual([]);
+    expect((await importAlberoPackage(await exportAlberoPackage(snapshot, []))).snapshot).toEqual(snapshot);
+  });
+
+  it("rejects invalid sibling lists before replacing an archive", async () => {
+    const snapshot = snapshotWithoutMediaReferences();
+    for (const siblingIds of ["p2", ["p1"], ["missing"], ["p2", "p2"], null]) {
+      const raw = { ...snapshot, people: [{ ...snapshot.people[0], siblingIds }, ...snapshot.people.slice(1)] };
+      await expect(importAlberoPackage(await gzipJson(packageDocument({ snapshot: raw }))))
+        .rejects.toMatchObject({ code: "INVALID_SNAPSHOT" });
+    }
   });
 
   it.each(["0000", "187", "1878-05", "1878\n"])("rejects noncanonical partial dates %j", async (birthDate) => {

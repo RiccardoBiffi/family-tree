@@ -243,6 +243,9 @@ function assertPersonRecord(value: unknown, index: number): asserts value is Rec
   assertStringList(value.parentIds, `${path}.parentIds`, 1_000, 256);
   assertStringList(value.childIds, `${path}.childIds`, 10_000, 256);
   assertStringList(value.partnerIds, `${path}.partnerIds`, 1_000, 256);
+  if (value.siblingIds !== undefined) {
+    assertStringList(value.siblingIds, `${path}.siblingIds`, 10_000, 256);
+  }
   assertTimestamp(value.createdAt, `${path}.createdAt`);
   assertTimestamp(value.updatedAt, `${path}.updatedAt`);
 }
@@ -298,7 +301,7 @@ function validateFamilyTreeSnapshot(
     peopleIds.add(personId);
   }
 
-  const relationshipFields = ["parentIds", "childIds", "partnerIds"] as const;
+  const relationshipFields = ["parentIds", "childIds", "partnerIds", "siblingIds"] as const;
   for (let index = 0; index < people.length; index += 1) {
     const person = people[index] as Record<string, unknown>;
     const parentIds = person.parentIds as string[];
@@ -314,7 +317,7 @@ function validateFamilyTreeSnapshot(
       }
     }
     for (const field of relationshipFields) {
-      const references = person[field] as string[];
+      const references = (person[field] ?? []) as string[];
       if (new Set(references).size !== references.length) {
         packageError(
           "INVALID_SNAPSHOT",
