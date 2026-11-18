@@ -5,7 +5,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 
 import { useDialogFocus } from "@/hooks/useDialogFocus";
 import { DEFAULT_ALLOWED_MEDIA_MIME_TYPES } from "@/models/MediaAsset";
-import { PERSON_SEX_LABELS, type PersonRecord, type PersonSex } from "@/models/Person";
+import { isPersonYear, PERSON_SEX_LABELS, type PersonRecord, type PersonSex } from "@/models/Person";
 import { getBiologicalParentIds, getPersonDisplayName, getPersonShortName } from "@/utils/familyTree";
 
 export type PersonMediaKind = "image" | "audio" | "video" | "pdf" | "file";
@@ -73,6 +73,89 @@ function normalizeCommaSeparated(value: string): string[] | null {
 
 function formatCommaSeparated(values: string[] | null): string {
   return values?.join(", ") ?? "";
+}
+
+interface PersonDateDraft {
+  yearOnly: boolean;
+  fullDate: string;
+  year: string;
+}
+
+function createDateDraft(value: string | null): PersonDateDraft {
+  const yearOnly = isPersonYear(value);
+  return {
+    yearOnly,
+    fullDate: yearOnly ? "" : value ?? "",
+    year: value?.slice(0, 4) ?? "",
+  };
+}
+
+function getDateDraftValue({ yearOnly, fullDate, year }: PersonDateDraft): string | null {
+  return (yearOnly ? year : fullDate) || null;
+}
+
+function getDateDraftError({ yearOnly, fullDate, year }: PersonDateDraft): string | null {
+  if (yearOnly && year && !isPersonYear(year)) {
+    return "Inserisci un anno di quattro cifre tra 0001 e 9999.";
+  }
+  if (!yearOnly && !fullDate && year) {
+    return "Inserisci la data completa o seleziona «Solo anno».";
+  }
+  return null;
+}
+
+function PersonDateField({
+  label,
+  yearLabel,
+  name,
+  draft,
+  error,
+  onChange,
+}: {
+  label: string;
+  yearLabel: string;
+  name: "birthDate" | "deathDate";
+  draft: PersonDateDraft;
+  error: string | null;
+  onChange: (draft: PersonDateDraft) => void;
+}) {
+  const errorId = useId();
+  const { yearOnly, fullDate, year } = draft;
+
+  return (
+    <div className="min-w-0">
+      <label className="block space-y-2">
+        <span className="text-xs uppercase tracking-[0.18em] text-slate-500">{label}</span>
+        <input
+          aria-describedby={error ? errorId : undefined}
+          aria-invalid={error ? true : undefined}
+          className={fieldClassName}
+          inputMode={yearOnly ? "numeric" : undefined}
+          name={name}
+          onChange={(event) => {
+            const value = event.target.value;
+            onChange(yearOnly
+              ? { ...draft, year: value }
+              : { ...draft, fullDate: value, year: value.slice(0, 4) });
+          }}
+          placeholder={yearOnly ? "AAAA" : undefined}
+          type={yearOnly ? "text" : "date"}
+          value={yearOnly ? year : fullDate}
+        />
+      </label>
+      <label className="inline-flex min-h-8 cursor-pointer items-center gap-2 text-sm text-slate-700">
+        <input
+          aria-label={yearLabel}
+          checked={yearOnly}
+          className="size-4 accent-[#0c3b24]"
+          onChange={(event) => onChange({ ...draft, yearOnly: event.target.checked })}
+          type="checkbox"
+        />
+        Solo anno
+      </label>
+      {error ? <p className="text-sm text-[#8b3030]" id={errorId} role="alert">{error}</p> : null}
+    </div>
+  );
 }
 
 function RelationDropdown({
@@ -227,6 +310,9 @@ export function PersonEditorModal({
   const [draft, setDraft] = useState<PersonRecord>(person);
   const titleId = useId();
   const [tagsText, setTagsText] = useState(() => formatCommaSeparated(person.tags));
+  const [birthDateDraft, setBirthDateDraft] = useState(() => createDateDraft(person.birthDate));
+  const [deathDateDraft, setDeathDateDraft] = useState(() => createDateDraft(person.deathDate));
+  const [showDateErrors, setShowDateErrors] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [removePhoto, setRemovePhoto] = useState(false);
   const [mediaFiles, setMediaFiles] = useState<File[]>([]);
@@ -239,6 +325,9 @@ export function PersonEditorModal({
   useEffect(() => {
     setDraft(person);
     setTagsText(formatCommaSeparated(person.tags));
+    setBirthDateDraft(createDateDraft(person.birthDate));
+    setDeathDateDraft(createDateDraft(person.deathDate));
+    setShowDateErrors(false);
     setPhotoFile(null);
     setRemovePhoto(false);
     setMediaFiles([]);
@@ -260,15 +349,23 @@ export function PersonEditorModal({
   }, [photoFile]);
 
   const initialTagsText = formatCommaSeparated(person.tags);
+  const birthDate = getDateDraftValue(birthDateDraft);
+  const deathDate = getDateDraftValue(deathDateDraft);
+  const birthDateError = getDateDraftError(birthDateDraft);
+  const deathDateError = getDateDraftError(deathDateDraft);
   const hasUnsavedChanges = useMemo(
     () =>
       JSON.stringify(draft) !== JSON.stringify(person) ||
       tagsText !== initialTagsText ||
+      birthDate !== person.birthDate ||
+      deathDate !== person.deathDate ||
       photoFile !== null ||
       removePhoto ||
       mediaFiles.length > 0 ||
       removedMediaIds.length > 0,
     [
+      birthDate,
+      deathDate,
       draft,
       initialTagsText,
       mediaFiles.length,
@@ -491,9 +588,19 @@ export function PersonEditorModal({
             if (busy) {
               return;
             }
+            if (birthDateError || deathDateError) {
+              setShowDateErrors(true);
+              const field = event.currentTarget.elements.namedItem(birthDateError ? "birthDate" : "deathDate");
+              if (field instanceof HTMLInputElement) {
+                field.focus();
+              }
+              return;
+            }
             onSave(
               {
                 ...draft,
+                birthDate,
+                deathDate,
                 tags: normalizeCommaSeparated(tagsText),
               },
               {
@@ -550,15 +657,14 @@ export function PersonEditorModal({
                   ))}
                 </select>
               </label>
-              <label className="space-y-2">
-                <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Data di nascita</span>
-                <input
-                  className={fieldClassName}
-                  onChange={(event) => updateDraft("birthDate", event.target.value || null)}
-                  type="date"
-                  value={draft.birthDate ?? ""}
-                />
-              </label>
+              <PersonDateField
+                draft={birthDateDraft}
+                error={showDateErrors ? birthDateError : null}
+                label="Data di nascita"
+                name="birthDate"
+                onChange={setBirthDateDraft}
+                yearLabel="Solo anno di nascita"
+              />
               <label className="space-y-2">
                 <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Luogo di nascita</span>
                 <input
@@ -567,15 +673,14 @@ export function PersonEditorModal({
                   value={draft.birthPlace ?? ""}
                 />
               </label>
-              <label className="space-y-2">
-                <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Data di decesso</span>
-                <input
-                  className={fieldClassName}
-                  onChange={(event) => updateDraft("deathDate", event.target.value || null)}
-                  type="date"
-                  value={draft.deathDate ?? ""}
-                />
-              </label>
+              <PersonDateField
+                draft={deathDateDraft}
+                error={showDateErrors ? deathDateError : null}
+                label="Data di decesso"
+                name="deathDate"
+                onChange={setDeathDateDraft}
+                yearLabel="Solo anno di decesso"
+              />
               <label className="space-y-2">
                 <span className="text-xs uppercase tracking-[0.18em] text-slate-500">Luogo di decesso</span>
                 <input

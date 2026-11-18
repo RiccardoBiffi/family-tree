@@ -1,4 +1,5 @@
 export type PersonId = string;
+/** A complete ISO date, a four-digit year, or an unknown date. */
 export type PersonDateValue = string | null;
 export type PersonSex = "female" | "male" | "nonbinary" | "unknown" | null;
 
@@ -8,6 +9,10 @@ export const PERSON_SEX_LABELS: Record<NonNullable<PersonSex>, string> = {
   nonbinary: "Non binario",
   unknown: "Sconosciuto",
 };
+
+export function isPersonYear(value: unknown): boolean {
+  return typeof value === "string" && /^\d{4}$/u.test(value) && value !== "0000";
+}
 
 export interface PersonInput {
   id?: PersonId;
@@ -101,8 +106,11 @@ function normalizeDateValue(value: PersonDateValue | Date | undefined): PersonDa
   }
 
   const trimmed = value.trim();
-  if (!trimmed) {
+  if (!trimmed || trimmed === "0000") {
     return null;
+  }
+  if (isPersonYear(trimmed)) {
+    return trimmed;
   }
 
   const parsed = new Date(trimmed);

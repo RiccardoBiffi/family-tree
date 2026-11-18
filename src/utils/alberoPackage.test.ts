@@ -12,6 +12,7 @@ import {
   type MediaAssetRecord,
 } from "@/models/MediaAsset";
 import type { FamilyTreeSnapshot } from "@/models/FamilyTree";
+import { Person } from "@/models/Person";
 import {
   ALBERO_MIME_TYPE,
   ALBERO_PACKAGE_FORMAT,
@@ -19,6 +20,7 @@ import {
   exportAlberoPackage,
   importAlberoPackage,
 } from "@/utils/alberoPackage";
+import { normalizeFamilyTree } from "@/utils/familyTree";
 
 beforeAll(() => {
   vi.stubGlobal("Blob", NodeBlob);
@@ -181,6 +183,31 @@ describe(".albero package", () => {
 
     expect(imported.snapshot).toEqual(snapshot);
     expect(imported.assets).toEqual([]);
+  });
+
+  it("preserves the precision of year-only, complete, and unknown dates through import", async () => {
+    const snapshot = snapshotWithoutMediaReferences();
+    snapshot.people = [
+      new Person({ id: "year", name: "Ada", birthDate: " 1878 ", deathDate: "1955" }).toRecord(),
+      new Person({ id: "date", name: "Pietro", birthDate: new Date("1960-03-06T00:00:00Z") }).toRecord(),
+    ];
+
+    const imported = await importAlberoPackage(await exportAlberoPackage(snapshot, []));
+
+    expect(imported.snapshot.people).toMatchObject([
+      { birthDate: "1878", deathDate: "1955" },
+      { birthDate: "1960-03-06", deathDate: null },
+    ]);
+    expect(normalizeFamilyTree(imported.snapshot)).toEqual(imported.snapshot);
+  });
+
+  it.each(["0000", "187", "1878-05", "1878\n"])("rejects noncanonical partial dates %j", async (birthDate) => {
+    const snapshot = snapshotWithoutMediaReferences();
+    snapshot.people[0] = { ...snapshot.people[0], birthDate };
+
+    await expect(exportAlberoPackage(snapshot, [])).rejects.toMatchObject({ code: "INVALID_SNAPSHOT" });
+    await expect(importAlberoPackage(await gzipJson(packageDocument({ snapshot }))))
+      .rejects.toMatchObject({ code: "INVALID_SNAPSHOT" });
   });
 
   it("round-trips biological and partial diagram selections while keeping all parent links", async () => {

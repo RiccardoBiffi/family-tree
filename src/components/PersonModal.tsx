@@ -141,7 +141,7 @@ export function PersonModal({
                 <div className="flex justify-between gap-4">
                   <dt className="text-slate-500">Decesso</dt>
                   <dd>
-                    {person.deathDate ? formatDateLabel(person.deathDate) : "Ancora in vita"}
+                    {formatDateLabel(person.deathDate)}
                     {person.deathPlace ? ` · ${person.deathPlace}` : ""}
                   </dd>
                 </div>

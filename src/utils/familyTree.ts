@@ -4,7 +4,7 @@ import {
   type FamilyTreeMetadata,
   type FamilyTreeSnapshot,
 } from "@/models/FamilyTree";
-import { Person, type PersonId, type PersonInput, type PersonRecord } from "@/models/Person";
+import { isPersonYear, Person, type PersonId, type PersonInput, type PersonRecord } from "@/models/Person";
 
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values));
@@ -371,6 +371,9 @@ const personDateFormatter = new Intl.DateTimeFormat("it-IT", {
 });
 
 export function formatDateLabel(date: string | null): string {
+  if (date && isPersonYear(date)) {
+    return date;
+  }
   const time = date ? Date.parse(date) : NaN;
   return Number.isNaN(time) ? "Data sconosciuta" : personDateFormatter.format(time);
 }
@@ -378,6 +381,9 @@ export function formatDateLabel(date: string | null): string {
 export function extractYear(date: string | null): number | null {
   if (!date) {
     return null;
+  }
+  if (isPersonYear(date)) {
+    return Number(date);
   }
 
   const parsed = new Date(date);
@@ -392,11 +398,11 @@ export function getLifeSpanLabel(person: PersonRecord): string {
   const birthYear = extractYear(person.birthDate);
   const deathYear = extractYear(person.deathDate);
 
-  if (!birthYear && !deathYear) {
-    return "Date sconosciute";
+  if (deathYear === null) {
+    return birthYear?.toString() ?? "Date sconosciute";
   }
 
-  return `${birthYear ?? "?"} - ${deathYear ?? "oggi"}`;
+  return `${birthYear ?? "?"} - ${deathYear}`;
 }
 
 export function computeGenerationMap(people: readonly PersonRecord[]): Map<string, number> {

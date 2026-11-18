@@ -13,6 +13,7 @@ import {
   FAMILY_TREE_VERSION,
   type FamilyTreeSnapshot,
 } from "@/models/FamilyTree";
+import { isPersonYear } from "@/models/Person";
 
 export const ALBERO_PACKAGE_FORMAT = "family-tree.albero" as const;
 export const ALBERO_PACKAGE_VERSION = 1 as const;
@@ -140,7 +141,7 @@ function assertPersonDate(
   value: unknown,
   path: string,
 ): asserts value is string | null {
-  if (value === null) {
+  if (value === null || isPersonYear(value)) {
     return;
   }
 
@@ -149,7 +150,7 @@ function assertPersonDate(
     !/^\d{4}-\d{2}-\d{2}$/u.test(value) ||
     Number.isNaN(Date.parse(`${value}T00:00:00.000Z`))
   ) {
-    packageError("INVALID_SNAPSHOT", `${path} must be an ISO date or null.`);
+    packageError("INVALID_SNAPSHOT", `${path} must be a four-digit year, an ISO date, or null.`);
   }
 }
 

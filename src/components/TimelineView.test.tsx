@@ -55,23 +55,24 @@ describe("TimelineView dates", () => {
     partnerIds: [],
   };
   const people = [
-    { ...prototypePerson, id: "antonino", name: "Antonino", birthDate: "1918-01-01", deathDate: "1982-01-01" },
+    { ...prototypePerson, id: "antonino", name: "Antonino", birthDate: "1918", deathDate: "1982" },
     { ...prototypePerson, id: "amir", name: "Amir", birthDate: `${currentYear - 22}-01-01`, deathDate: null },
-    { ...prototypePerson, id: "maria", name: "Maria", birthDate: null, deathDate: "1950-01-01" },
+    { ...prototypePerson, id: "maria", name: "Maria", birthDate: null, deathDate: "1950" },
   ];
 
   it("shows death year below the person's name, including when birth is unknown", () => {
     render(<TimelineView people={people} onSelectPerson={vi.fn()} query="" />);
 
-    const antonino = screen.getByRole("button", { name: /Apri la scheda di Antonino Ferraro/ });
+    const antonino = screen.getByRole("button", { name: "Apri la scheda di Antonino Ferraro, 1918, decesso 1982" });
     expect(antonino.querySelector("[data-timeline-lifespan]")).toHaveTextContent("1918 – 1982");
     expect(screen.getByRole("button", { name: "Maria Ferraro, decesso 1950" })).toHaveTextContent("Decesso 1950");
   });
 
-  it("shows only the birth year for a living person", () => {
+  it("shows only the birth year on an open-ended bar when death is undocumented", () => {
     render(<TimelineView people={people} onSelectPerson={vi.fn()} query="" />);
 
     const amir = screen.getByRole("button", { name: /Apri la scheda di Amir Ferraro/ });
+    expect(amir).toHaveAttribute("title", expect.stringContaining("decesso non indicato"));
     expect(amir.querySelector("[data-timeline-bar] [data-timeline-birth]")).toHaveTextContent(String(currentYear - 22));
     expect(amir.querySelector("[data-timeline-bar] [data-timeline-end]")).toBeNull();
     expect(amir.querySelector("[data-timeline-lifespan]")).toHaveTextContent(new RegExp(`^${currentYear - 22}$`));

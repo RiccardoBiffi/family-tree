@@ -97,7 +97,7 @@ function getLegalName(person: PersonRecord): string {
 }
 
 function formatTableDate(value: string | null): string {
-  return formatDateLabel(value).replace(/^0/, "");
+  return formatDateLabel(value).replace(/^0(?=\d\s)/u, "");
 }
 
 function TableText({ value, muted = false }: { value: string; muted?: boolean }) {
@@ -294,10 +294,7 @@ export function PeopleTable({ people, query, onSelectPerson }: PeopleTableProps)
       {
         accessorKey: "deathDate",
         header: "Decesso",
-        cell: ({ row }) =>
-          row.original.deathDate
-            ? formatTableDate(row.original.deathDate)
-            : "In vita",
+        cell: ({ row }) => formatTableDate(row.original.deathDate),
         sortingFn: "datetime",
       },
       {

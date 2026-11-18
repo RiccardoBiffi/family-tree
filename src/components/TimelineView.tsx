@@ -25,7 +25,6 @@ interface TimelineEntry {
   birthYear: number;
   deathYear: number | null;
   endYear: number;
-  isLiving: boolean;
 }
 
 interface TimelineGroup {
@@ -95,7 +94,6 @@ function buildTimelineData(people: PersonRecord[]) {
       birthYear,
       deathYear,
       endYear,
-      isLiving: person.deathDate === null,
     });
     groupedEntries.set(generation, generationEntries);
     minYear = hasDatedPeople ? Math.min(minYear, birthYear) : birthYear;
@@ -318,6 +316,7 @@ function TimelineBar({
     axisEndYear,
   );
   const spanPercentage = Math.max(endPosition - startPosition, 0);
+  const hasDeathYear = entry.deathYear !== null;
 
   return (
     <div aria-hidden="true" className="relative h-14 min-w-0 overflow-hidden sm:h-[51px]" data-timeline-track>
@@ -329,7 +328,7 @@ function TimelineBar({
       <span
         className={[
           "@container absolute top-1/2 h-7 -translate-y-1/2 overflow-hidden rounded-md",
-          entry.isLiving ? "bg-[#4f765f]" : "bg-[#3b3d3c]",
+          hasDeathYear ? "bg-[#3b3d3c] text-white" : "border border-dashed border-[#4f765f] bg-[#edf4ef] text-[#173c2a]",
           highlighted
             ? "outline-2 outline-offset-2 outline-[#173c2a]"
             : "",
@@ -341,7 +340,7 @@ function TimelineBar({
           width: `${spanPercentage}%`,
         }}
       >
-        <span className="hidden h-full items-center justify-between gap-1 whitespace-nowrap px-2 text-[11px] font-semibold tabular-nums text-white @min-[5.5rem]:flex sm:text-xs">
+        <span className="hidden h-full items-center justify-between gap-1 whitespace-nowrap px-2 text-[11px] font-semibold tabular-nums @min-[5.5rem]:flex sm:text-xs">
           <span data-timeline-birth>{entry.birthYear}</span>
           {entry.deathYear !== null ? <span data-timeline-end>{entry.deathYear}</span> : null}
         </span>
@@ -444,7 +443,7 @@ function TimelineRowContent({
       data-virtual-row={index}
       onClick={() => onSelectPerson(person.id)}
       style={{ height }}
-      title={`${displayName}: ${lifespan}`}
+      title={`${displayName}: ${lifespan}${entry.deathYear === null ? " · decesso non indicato" : ""}`}
       type="button"
     >
       <span
@@ -574,8 +573,7 @@ export function TimelineView({
       <div className="sr-only">
         <h2 id={titleId}>Cronologia di nascite e decessi</h2>
         <p id={descriptionId}>
-          Le persone sono allineate per generazione, dalla nascita più antica
-          fino a oggi.
+          Le persone sono allineate per generazione. Le barre tratteggiate indicano un decesso non documentato.
         </p>
         <span>
           Intervallo {minYear} - {currentYear}

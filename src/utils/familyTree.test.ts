@@ -4,7 +4,9 @@ import { Person, type PersonRecord } from "@/models/Person";
 import {
   computeDiagramGenerationMap,
   computeGenerationMap,
+  extractYear,
   formatDateLabel,
+  getLifeSpanLabel,
   getPartnerComponents,
   getFamilyTreeIssues,
   validateFamilyTree,
@@ -69,6 +71,14 @@ describe("family tree generations", () => {
   it("formats calendar dates consistently even when a date string is invalid", () => {
     expect(formatDateLabel("2000-01-01")).toBe("01 gen 2000");
     expect(formatDateLabel("invalid")).toBe("Data sconosciuta");
+  });
+
+  it("displays year precision and leaves an undocumented death open", () => {
+    expect(formatDateLabel("0042")).toBe("0042");
+    expect(extractYear("1878")).toBe(1878);
+    const born = new Person({ name: "Ada", birthDate: "1878" }).toRecord();
+    expect(getLifeSpanLabel(born)).toBe("1878");
+    expect(getLifeSpanLabel({ ...born, deathDate: "1954" })).toBe("1878 - 1954");
   });
 });
 

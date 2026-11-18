@@ -260,6 +260,92 @@ describe("PersonEditorModal", () => {
     });
   });
 
+  it("keeps raw year edits, prevents invalid saves, and submits both year-only dates", async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const { onClose, onSave } = renderEditor(vi.fn(), { mode: "create" });
+    const birthDate = screen.getByLabelText("Data di nascita");
+    const deathDate = screen.getByLabelText("Data di decesso");
+    expect(birthDate).toHaveAttribute("type", "date");
+    expect(deathDate).toHaveAttribute("type", "date");
+
+    await user.click(screen.getByRole("checkbox", { name: "Solo anno di nascita" }));
+    await user.type(birthDate, "187");
+    expect(birthDate).toHaveValue("187");
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(onClose).not.toHaveBeenCalled();
+
+    await user.type(screen.getByLabelText("Nome"), "Giulia");
+    const save = screen.getByRole("button", { name: "Crea persona" });
+    await user.click(save);
+    expect(birthDate).toHaveFocus();
+    expect(birthDate).toBeInvalid();
+    expect(birthDate).toHaveAccessibleDescription(/anno di quattro cifre/);
+    expect(onSave).not.toHaveBeenCalled();
+
+    await user.type(birthDate, "2");
+    await user.click(screen.getByRole("checkbox", { name: "Solo anno di decesso" }));
+    await user.type(deathDate, "0000");
+    await user.click(save);
+    expect(deathDate).toBeInvalid();
+    expect(onSave).not.toHaveBeenCalled();
+
+    await user.clear(deathDate);
+    await user.type(deathDate, "1956");
+    await user.click(save);
+    expect(onSave.mock.calls[0][0]).toMatchObject({ birthDate: "1872", deathDate: "1956" });
+  });
+
+  it("retains the draft dates when switching precision and requires an explicit full date", async () => {
+    const user = userEvent.setup();
+    const { onSave } = renderEditor(vi.fn(), {
+      person: { ...anna, birthDate: "1947", deathDate: "2025-03-04" },
+    });
+    const birthDate = screen.getByLabelText("Data di nascita");
+    const deathDate = screen.getByLabelText("Data di decesso");
+    const birthYear = screen.getByRole("checkbox", { name: "Solo anno di nascita" });
+    const deathYear = screen.getByRole("checkbox", { name: "Solo anno di decesso" });
+    const save = screen.getByRole("button", { name: "Salva modifiche" });
+    expect(birthYear).toBeChecked();
+    expect(birthDate).toHaveValue("1947");
+
+    await user.click(deathYear);
+    expect(deathDate).toHaveValue("2025");
+    await user.click(deathYear);
+    expect(deathDate).toHaveValue("2025-03-04");
+
+    await user.click(birthYear);
+    expect(birthDate).toHaveValue("");
+    await user.click(save);
+    expect(birthDate).toHaveAccessibleDescription(/data completa/);
+    expect(onSave).not.toHaveBeenCalled();
+
+    await user.click(birthYear);
+    expect(birthDate).toHaveValue("1947");
+    await user.click(birthYear);
+    fireEvent.change(birthDate, { target: { value: "1947-04-05" } });
+    await user.click(save);
+    expect(onSave.mock.calls[0][0]).toMatchObject({
+      birthDate: "1947-04-05",
+      deathDate: "2025-03-04",
+    });
+  });
+
+  it("retains a stored year on unrelated edits and lets the user clear it", async () => {
+    const user = userEvent.setup();
+    const { onSave } = renderEditor(vi.fn(), { person: { ...anna, deathDate: "2025" } });
+    const deathDate = screen.getByLabelText("Data di decesso");
+    const save = screen.getByRole("button", { name: "Salva modifiche" });
+    await user.type(screen.getByLabelText("Nome noto"), "Nina");
+    await user.click(save);
+    expect(onSave.mock.calls[0][0]).toMatchObject({ deathDate: "2025", knownAs: "Nina" });
+
+    await user.clear(deathDate);
+    await user.click(save);
+    expect(onSave.mock.calls[1][0].deathDate).toBeNull();
+  });
+
   it("adds and replaces a photo from the portrait control", async () => {
     const user = userEvent.setup();
     const existingPhoto: PersonPhotoView = {
